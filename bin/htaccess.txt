@@ -1,0 +1,3 @@
+AddHandler rivet-cgi .rvt
+Action rivet-cgi /rivet/bin/rivet.cgi
+DirectoryIndex index.rvt index.cgi index.php index.htm index.html index.html.var

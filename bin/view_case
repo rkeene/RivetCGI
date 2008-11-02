@@ -1,0 +1,21 @@
+#! /bin/sh
+
+casenum="$1"
+logfile="$2"
+
+if [ -z "${casenum}" ]; then
+	echo 'Usage: view_case <casenum> [<logfile>]'
+	exit 1
+fi
+
+if [ -z "${logfile}" ]; then
+	logfile="/var/log/httpd/error_log"
+fi
+
+if [ ! -f "${logfile}" ]; then
+	echo "Can't read Apache error_log file (${logfile}), aborting." >&2
+	exit 1
+fi
+
+BEGIN_CASENUMBER=48-1127230399-15123946856840
+grep -A1000 "\] BEGIN_CASENUMBER=$casenum$" "${logfile}" | grep -B1000 "\] END_CASENUMBER=$casenum$"
