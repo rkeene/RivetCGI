@@ -1,14 +1,13 @@
 #! /bin/bash
 
-SRCDIR="$(readlink -f "$1")"
-OUTPUT="$2"
+OUTPUT="$1"
 OURDIR="."
 
 TCLPACK="$(readlink -f "${OURDIR}/../../starkit2exe/tclkits/tclkit-8.4.18-linux-x86")"
 SDXKIT="$(readlink -f "${OURDIR}/../../starkit2exe/support/sdx-1nrl.kit")"
 
-if [ -z "${SRCDIR}" ]; then
-	echo 'Usage: rivet2starkit <dirname> <outputkit>' >&2
+if [ -z "${OUTPUT}" -o -z "$2" ]; then
+	echo 'Usage: rivet2starkit <outputkit> <dirname:destdir> ...' >&2
 	exit 1
 fi
 
@@ -17,7 +16,24 @@ mkdir "${TMPRIVETDIR}" || exit 1
 
 TMPVFSDIR="${TMPRIVETDIR}/rivet.vfs"
 rm -rf "${TMPVFSDIR}"
-cp -rp "${SRCDIR}" "${TMPVFSDIR}"
+
+# Copy each source directory into the VFS area
+shift
+for srcdir in "$*"; do
+	if echo "${srcdir}" | grep ':' >/dev/null; then
+		dstdir=$(echo "${srcdir}" | cut -f 2 -d ':')
+		srcdir=$(echo "${srcdir}" | cut -f 1 -d ':')
+	else
+		dstdir=""
+	fi
+	SRCDIR="$(readlink -f "${srcdir}")"
+	if [ -z "${SRCDIR}" -o ! -e "${SRCDIR}" ]; then
+		echo "File not found: ${SRCDIR}" >&2
+		continue
+	fi
+
+	cp -rp "${SRCDIR}" "${TMPVFSDIR}/$dstdir"
+done
 
 # Install main script
 cp "${OURDIR}/../rivet-starkit/main.tcl" "${TMPVFSDIR}"
