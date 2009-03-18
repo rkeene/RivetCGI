@@ -44,16 +44,24 @@ if {![string match "$srcdir/*" $targetfile]} {
 }
 
 # Check every component of the pathname for a ".htaccess" file, and stop processing if one is found
+set chk_srcdir $srcdir
 set work [file split $targetfile]
-set srcwork [file split $srcdir]
+set srcwork [file split $chk_srcdir]
 set work [lrange $work [llength $srcwork] end]
 foreach component $work {
-	set chk_htaccess [file join $srcdir .htaccess]
+	set chk_htaccess [file join $chk_srcdir .htaccess]
 	if {[file exists $chk_htaccess]} {
 		set targetfile "__RIVETSTARKIT_FORBIDDEN__"
 		break
 	}
-	set srcdir [file join $srcdir $component]
+	set chk_srcdir [file join $chk_srcdir $component]
+}
+
+# Deny forbidden files
+switch -- $targetfile {
+	"$srcdir/main.tcl" - "$srcdir/boot.tcl" - "$srcdir/config.tcl" {
+		set targetfile "__RIVETSTARKIT_FORBIDDEN__"
+	}
 }
 
 # Check for file existance
