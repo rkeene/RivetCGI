@@ -25,11 +25,15 @@ cp "${OURDIR}/../rivet-starkit/main.tcl" "${TMPVFSDIR}"
 # Install requiste packages
 cp -rp "${OURDIR}/../packages" "${TMPVFSDIR}/lib"
 
-
+# Wrap VFS dir into kit
 echo "${TCLPACK}" "${SDXKIT}" wrap "${TMPRIVETDIR}/rivet.kit"
 (
 	cd "${TMPRIVETDIR}"
 	"${TCLPACK}" "${SDXKIT}" wrap rivet.kit
 )
 
+# Copy output kit to target
 cp "${TMPRIVETDIR}/rivet.kit" "${OUTPUT}"
+
+# Cleanup
+rm -rf "${TMPRIVETDIR}"
