@@ -1,7 +1,17 @@
 #! /bin/bash
 
 OUTPUT="$1"
-OURDIR="."
+OURSCP=$0
+if echo "${OURSCP}" | grep '/' >/dev/null; then
+	OURSCP="$(readlink -f "${OURSCP}")"
+else
+	OURSCP="$(which "${OURSCP}" 2>/dev/null)"
+	if [ -z "${OURSCP}" ]; then
+		echo 'Unable to find ourselves, aborting.' >&2
+		exit 1
+	fi
+fi
+OURDIR="$(dirname "${OURSCP}")"
 
 TCLPACK="$(readlink -f "${OURDIR}/../../starkit2exe/tclkits/tclkit-8.4.18-linux-x86")"
 SDXKIT="$(readlink -f "${OURDIR}/../../starkit2exe/support/sdx-1nrl.kit")"
