@@ -58,9 +58,11 @@ foreach component $work {
 }
 
 # Deny forbidden files
-switch -- $targetfile {
-	"$srcdir/main.tcl" - "$srcdir/boot.tcl" - "$srcdir/config.tcl" {
-		set targetfile "__RIVETSTARKIT_FORBIDDEN__"
+if {[file dirname $targetfile] == "$srcdir"} {
+	switch -- [file tail $targetfile] {
+		"main.tcl" - "boot.tcl" - "config.tcl" {
+			set targetfile "__RIVETSTARKIT_FORBIDDEN__"
+		}
 	}
 }
 
