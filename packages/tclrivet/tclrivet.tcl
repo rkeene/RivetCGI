@@ -38,12 +38,63 @@ proc include { filename } {
     close $fl
 }
 
+namespace eval rivet {}
 namespace eval rivet {
 	array set header_pairs {}
 	set header_type "text/html"
 	set header_sent 0
 	set output_buffer ""
 	set send_no_content 0
+
+	proc statuscode_to_str {sc} {
+		switch -- $sc {
+			100 { set retval "Continue" }
+			101 { set retval "Switching Protocols" }
+			200 { set retval "OK" }
+			201 { set retval "Created" }
+			202 { set retval "Accepted" }
+			203 { set retval "Non-Authoritative Information" }
+			204 { set retval "No Content" }
+			205 { set retval "Reset Content" }
+			206 { set retval "Partial Content" }
+			300 { set retval "Multiple Choices" }
+			301 { set retval "Moved Permanently" }
+			302 { set retval "Found" }
+			303 { set retval "See Other" }
+			304 { set retval "Not Modified" }
+			305 { set retval "Use Proxy" }
+			307 { set retval "Temporary Redirect" }
+			400 { set retval "Bad Request" }
+			401 { set retval "Unauthorized" }
+			402 { set retval "Payment Required" }
+			403 { set retval "Forbidden" }
+			404 { set retval "Not Found" }
+			405 { set retval "Method Not Allowed" }
+			406 { set retval "Not Acceptable" }
+			407 { set retval "Proxy Authentication Required" }
+			408 { set retval "Request Timeout" }
+			409 { set retval "Conflict" }
+			410 { set retval "Gone" }
+			411 { set retval "Length Required" }
+			412 { set retval "Precondition Failed" }
+			413 { set retval "Request Entity Too Large" }
+			414 { set retval "Request-URI Too Long" }
+			415 { set retval "Unsupported Media Type" }
+			416 { set retval "Requested Range Not Satisfiable" }
+			417 { set retval "Expectation Failed" }
+			500 { set retval "Internal Server Error" }
+			501 { set retval "Not Implemented" }
+			502 { set retval "Bad Gateway" }
+			503 { set retval "Service Unavailable" }
+			504 { set retval "Gateway Timeout" }
+			505 { set retval "HTTP Version Not Supported" }
+			default {
+				set retval "Unknown"
+			}
+		}
+
+		return $retval
+	}
 }
 
 proc rivet_flush {} {
@@ -51,6 +102,9 @@ proc rivet_flush {} {
 		set ::rivet::header_sent 1
 		if {![info exists ::rivet::header_redirect]} {
 			tcl_puts "Content-type: $::rivet::header_type"
+			if {[info exists ::rivet::statuscode]} {
+				puts "Status: $::rivet::statuscode [::rivet::statuscode_to_str $::rivet::statuscode]"
+			}
 			foreach {var val} [array get ::rivet::header_pairs] {
 				tcl_puts "$var: $val"
 			}
@@ -364,6 +418,8 @@ proc headers args {
 			rivet_flush
 		}
 		"numeric" {
+			set val [lindex $args 1]
+			set ::rivet::statuscode $val
 		}
 		default {
 			return -code error "bad option \"$cmd\": must be set, add, type, redirect, or numeric"
