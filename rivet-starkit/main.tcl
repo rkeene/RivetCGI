@@ -58,7 +58,7 @@ if {![file exists $targetfile]} {
 # Determine what to do with the file based on its filename
 switch -glob -- $targetfile {
 	"*.rvt" {
-		
+		parse $targetfile	
 	}
 	"*.png" {
 	}
