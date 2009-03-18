@@ -124,6 +124,12 @@ proc rivet_flush {} {
 
 proc rivet_error {} {
 	global errorInfo
+	if {[info exists errorInfo]} {
+		set incoming_errorInfo $errorInfo
+	} else {
+		set incoming_errorInfo "<<NO ERROR>>"
+	}
+
 	if {!$::rivet::header_sent} {
 		set ::rivet::header_sent 1
 		tcl_puts "Content-type: text/html"
@@ -148,7 +154,7 @@ proc rivet_error {} {
 	tcl_puts stderr "BEGIN_CASENUMBER=$caseid"
 	tcl_puts stderr "GLOBALS: [info globals]"
 	tcl_puts stderr "***********************"
-	tcl_puts stderr "$errorInfo"
+	tcl_puts stderr "$incoming_errorInfo"
 	tcl_puts stderr "END_CASENUMBER=$caseid"
 
 	tcl_puts {<!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML 2.0//EN">}

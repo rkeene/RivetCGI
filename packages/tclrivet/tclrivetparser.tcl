@@ -208,7 +208,7 @@ proc info args {
 		}
 	} else {
 		set cmd [linsert $args 0 __tcl_rivet_info]
-		set ret [eval $cmd]
+		set ret [uplevel $cmd]
 	}
 
 	return $ret
