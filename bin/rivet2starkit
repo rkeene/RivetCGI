@@ -25,8 +25,12 @@ cp "${OURDIR}/../rivet-starkit/main.tcl" "${TMPVFSDIR}"
 # Install requiste packages
 mkdir "${TMPVFSDIR}/lib"
 rm -rf "${TMPVFSDIR}/rivet-tcl"
-cp -rp "${OURDIR}/../packages"/* "${TMPVFSDIR}/lib/"
+cp -rp "${OURDIR}/../packages"/tclrivet "${TMPVFSDIR}/lib/"
 cp -rp "${OURDIR}/../rivet-tcl" "${TMPVFSDIR}/"
+
+# Add "Deny from all" .htaccess files where needed
+echo "Deny from all" "${TMPVFSDIR}/lib/.htaccess"
+echo "Deny from all" "${TMPVFSDIR}/rivet-tcl/.htaccess"
 
 # Wrap VFS dir into kit
 echo "${TCLPACK}" "${SDXKIT}" wrap "${TMPRIVETDIR}/rivet.kit"
