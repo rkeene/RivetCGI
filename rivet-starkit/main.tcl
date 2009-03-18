@@ -106,11 +106,14 @@ switch -glob -- [string tolower $targetfile] {
 # Dump static files
 if {[info exists statictype]} {
 	headers type $statictype
+	headers set "Last-Modified" [clock format [file mtime $targetfile] -format "%a, %d %b %Y %H:%M:%S GMT" -gmt 1]
+	headers set "Expires" "Tue, 19 Jan 2038 03:14:07 GMT"
+
 	set fd [open $targetfile r]
 	fconfigure $fd -encoding binary -translation {binary binary}
 	fconfigure stdout -encoding binary -translation {binary binary}
 	while 1 {
-		set data [read $fd 1024]
+		set data [read $fd 65535]
 		if {[string length $data] == 0} {
 			break
 		}

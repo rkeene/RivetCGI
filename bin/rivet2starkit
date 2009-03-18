@@ -19,27 +19,29 @@ rm -rf "${TMPVFSDIR}"
 
 # Copy each source directory into the VFS area
 shift
-for srcdir in "$*"; do
+for srcdir in $*; do
 	if echo "${srcdir}" | grep ':' >/dev/null; then
 		dstdir=$(echo "${srcdir}" | cut -f 2 -d ':')
 		srcdir=$(echo "${srcdir}" | cut -f 1 -d ':')
 	else
 		dstdir=""
 	fi
+
 	SRCDIR="$(readlink -f "${srcdir}")"
 	if [ -z "${SRCDIR}" -o ! -e "${SRCDIR}" ]; then
 		echo "File not found: ${SRCDIR}" >&2
 		continue
 	fi
 
-	cp -rp "${SRCDIR}" "${TMPVFSDIR}/$dstdir"
+	mkdir -p "${TMPVFSDIR}/$dstdir" >/dev/null 2>/dev/null
+	cp -rp "${SRCDIR}"/* "${TMPVFSDIR}/$dstdir"
 done
 
 # Install main script
 cp "${OURDIR}/../rivet-starkit/main.tcl" "${TMPVFSDIR}"
 
 # Install requiste packages
-mkdir "${TMPVFSDIR}/lib"
+mkdir "${TMPVFSDIR}/lib" >/dev/null 2>/dev/null
 rm -rf "${TMPVFSDIR}/rivet-tcl"
 cp -rp "${OURDIR}/../packages"/tclrivet "${TMPVFSDIR}/lib/"
 cp -rp "${OURDIR}/../rivet-tcl" "${TMPVFSDIR}/"
