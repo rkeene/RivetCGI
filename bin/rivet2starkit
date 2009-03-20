@@ -1,5 +1,22 @@
 #! /bin/bash
 
+echo '*** WARNING *** WARNING *** WARNING *** WARNING *** WARNING ***' >&2
+echo '*** WARNING *** WARNING *** WARNING *** WARNING *** WARNING ***' >&2
+echo '*** WARNING *** WARNING *** WARNING *** WARNING *** WARNING ***' >&2
+echo '' >&2
+echo 'Current versions of Tclkit contain a bug that allows arbitrary ' >&2
+echo 'TCL scripts to be executed if a Starpack is used as a CGI with ' >&2
+echo 'Apache unless a wrapper script is used. Example wrapper script:' >&2
+echo ''
+echo '  #! /bin/sh' >&2
+echo '  exec /path/to/starpack' >&2
+echo '  exit 1' >&2
+echo ''
+echo '*** WARNING *** WARNING *** WARNING *** WARNING *** WARNING ***' >&2
+echo '*** WARNING *** WARNING *** WARNING *** WARNING *** WARNING ***' >&2
+echo '*** WARNING *** WARNING *** WARNING *** WARNING *** WARNING ***' >&2
+
+
 OUTPUT="$1"
 OURSCP=$0
 if echo "${OURSCP}" | grep '/' >/dev/null; then
