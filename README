@@ -1,3 +1,13 @@
+This is Rivet/CGI.  It is useful for running Rivet applications as a normal
+process instead of under mod_rivet.  The bulk of this code was written by
+Mr. David Welton as part of the orginal Rivet project.
+
+The CGI integration was done by Mr. Roy Keene <rivet@rkeene.org>
+
+This package is maintained by Mr. Roy Keene, not Mr. David Welton.
+
+
+Original README Contents
 ###
 ## rivet/ - Initialization code for the Rivet Apache module.
 ##
