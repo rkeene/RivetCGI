@@ -3,7 +3,6 @@
 package require starkit
 starkit::startup
 
-package require tclrivet
 
 # Determine if a sub-file has been requested
 ## Sanity check
@@ -67,21 +66,25 @@ if {[file dirname $targetfile] == "$srcdir"} {
 
 # Check for file existance
 if {![file exists $targetfile]} {
+	puts "Content-type: text/html"
 	if {$targetfile == "__RIVETSTARKIT_FORBIDDEN__"} {
 		# Return a 403 (Forbidden)
-		headers numeric 403
+		puts "Status: 403 Forbidden"
+		puts ""
 		puts "<html><head><title>Forbidden</title></head><body><h1>File Access Forbidden</h1></body>"
 	} elseif {[file tail $targetfile] == "__RIVETSTARKIT_INDEX__"} {
 		# Return a 403 (Forbidden)
-		headers numeric 403
+		puts "Status: 403 Forbidden"
+		puts ""
 		puts "<html><head><title>Directory Listing Forbidden</title></head><body><h1>Directory Listing Forbidden</h1></body>"
 	} else {
 		# Return a 404 (File Not Found)
 		headers numeric 404
+		puts "Status: 404 Not Found"
+		puts ""
 		puts "<html><head><title>File Not Found</title></head><body><h1>File Not Found</h1></body>"
 	}
 
-	rivet_flush
 	exit 0
 }
 
@@ -89,6 +92,8 @@ if {![file exists $targetfile]} {
 ## cat /etc/httpd/mime.types | sed 's@#.*$@@' | while read mt exts; do if [ -z "${exts}" ]; then continue; fi; cb=""; for ext in $exts; do cb="${cb} \"*.${ext}\" - "; done; cb="${cb} { set statictype \"$mt\" }"; echo $cb; done | grep -v 'application/octet-stream' | sed 's@ - {@ {@' | sed 's@^@\t@'
 switch -glob -- [string tolower $targetfile] {
 	"*.rvt" {
+		package require tclrivet
+
 		cd [file dirname $targetfile]
 
 		if {[catch {
@@ -98,6 +103,10 @@ switch -glob -- [string tolower $targetfile] {
 			rivet_flush
 			exit 0
 		}
+
+		# Flush the output stream
+		rivet_flush
+		exit 0
 	}
 	"*.ez" { set statictype "application/andrew-inset" }
 	"*.atom" { set statictype "application/atom+xml" }
@@ -603,22 +612,17 @@ switch -glob -- [string tolower $targetfile] {
 
 # Dump static files
 if {[info exists statictype]} {
-	headers type $statictype
-	headers set "Last-Modified" [clock format [file mtime $targetfile] -format "%a, %d %b %Y %H:%M:%S GMT" -gmt 1]
-	headers set "Expires" "Tue, 19 Jan 2038 03:14:07 GMT"
+	puts "Content-type: $statictype"
+	puts "Last-Modified: [clock format [file mtime $targetfile] -format {%a, %d %b %Y %H:%M:%S GMT} -gmt 1]"
+	puts "Expires: Tue, 19 Jan 2038 03:14:07 GMT"
+	catch {
+		puts "Content-Length: [file size $targetfile]"
+	}
+	puts ""
 
 	set fd [open $targetfile r]
 	fconfigure $fd -encoding binary -translation {binary binary}
 	fconfigure stdout -encoding binary -translation {binary binary}
-	while 1 {
-		set data [read $fd 65535]
-		if {[string length $data] == 0} {
-			break
-		}
-		puts -nonewline $data
-	}
+	fcopy $fd stdout
 	close $fd
 }
-
-# Flush the output stream
-rivet_flush
