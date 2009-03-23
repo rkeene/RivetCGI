@@ -1,3 +1,5 @@
+
+I. INTRODUCTION
 This is Rivet/CGI.  It is useful for running Rivet applications as a normal
 process instead of under mod_rivet.  The bulk of this code was written by
 Mr. David Welton as part of the orginal Rivet project.
@@ -6,7 +8,61 @@ The CGI integration was done by Mr. Roy Keene <rivet@rkeene.org>
 
 This package is maintained by Mr. Roy Keene, not Mr. David Welton.
 
+************************************************************************
 
+II. USAGE
+
+1. Rivet as CGI with Apache 2.x
+	a. Compile "rivet.cgi" (found in the "bin/" directory)
+	b. Copy "rivet.cgi" (from above) to a directory that allows ExecCGI
+	c. Setup Apache to allow "*.rvt" files to be parsed by this executabl
+		i. Apache 2.x Configuration:
+			AddHandler rivet-cgi .rvt
+			Action rivet-cgi /RIVET-CGI-HASH-IGNORE-d9a9ef3f27db4d8163deee1421e06f00/rivet.cgi
+
+			<IfModule alias_module>
+			    ScriptAlias /RIVET-CGI-HASH-IGNORE-d9a9ef3f27db4d8163deee1421e06f00/ "/usr/lib/rivet0.5.0/cgi-bin/"
+			    <Directory "/usr/lib/rivet0.5.0/cgi-bin">
+			        AllowOverride None
+			        Options ExecCGI
+			        Order allow,deny
+			        Allow from all
+			    </Directory>
+			    <Files ~ "\.rvt$">
+			        AcceptPathInfo On
+			    </Files>
+			</IfModule>
+	d. Copy "packages/*" to somewhere in the Tcl library search path 
+
+2. Rivet as CGI by converting directory tree into a Starkit.
+	a. For more information on Starkits, see this page:
+		http://www.rkeene.org/projects/info/wiki.cgi/10
+	b. The advantage to this technique is that your entire application
+	   is contained in a single file that does not need to be unpacked
+	   by the end user (though they can still do so if they wish).
+	c. Further, the Starkit can be turned into a native executable for
+	   a particular platform (a Starpack) further reducing the
+	   requirements on the end user platform.
+	d. Creating a Starkit using "rivet2starkit" is easy:
+		i. $ bin/rivet2starkit <outputStarkit> <inputDirectory>
+		     [<inputDirectory>...]
+	e. If a ".htaccess" file is found anywhere, it is interpreted to
+	   mean "Deny from all"
+	f. Rivet files (identified by their filename ending in ".rvt") are
+	   interpreted using the normal Rivet rules (unless excluded by the
+	   above restriction using ".htaccess" files)
+	g. All other files are transmitted with a MIME type determined by
+	   their "file extension" (unless excluded as above)
+	h. ** NOTE **: Starpacks (that is native executables) created using
+	   current Tclkits (that is native executables) contain a security
+	   issue when used as a CGI under Apache:
+		http://code.google.com/p/tclkit/issues/detail?id=1
+	i. Enable "AcceptPathInfo" in Apache if it is disabled (default is
+	   Enabled) for CGI.
+
+************************************************************************
+
+III. HISTORICAL
 Original README Contents
 ###
 ## rivet/ - Initialization code for the Rivet Apache module.

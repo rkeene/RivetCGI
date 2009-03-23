@@ -613,8 +613,10 @@ switch -glob -- [string tolower $targetfile] {
 # Dump static files
 if {[info exists statictype]} {
 	puts "Content-type: $statictype"
-	puts "Last-Modified: [clock format [file mtime $targetfile] -format {%a, %d %b %Y %H:%M:%S GMT} -gmt 1]"
-	puts "Expires: Tue, 19 Jan 2038 03:14:07 GMT"
+	catch {
+		puts "Last-Modified: [clock format [file mtime $targetfile] -format {%a, %d %b %Y %H:%M:%S GMT} -gmt 1]"
+		puts "Expires: Tue, 19 Jan 2038 03:14:07 GMT"
+	}
 	catch {
 		puts "Content-Length: [file size $targetfile]"
 	}
