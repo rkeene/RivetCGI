@@ -1,3 +1,16 @@
 AddHandler rivet-cgi .rvt
 Action rivet-cgi /rivet/bin/rivet.cgi
-DirectoryIndex index.rvt index.cgi index.php index.htm index.html index.html.var
+
+<IfModule alias_module>
+    ScriptAlias /rivet/bin/rivet.cgi "/usr/lib/rivet0.5.0/cgi-bin/"
+    <Directory "/usr/lib/rivet0.5.0/cgi-bin">
+        AllowOverride None
+        Options ExecCGI
+        Order allow,deny
+        Allow from all
+    </Directory>
+    <Files ~ "\.rvt$">
+        AcceptPathInfo On
+    </Files>
+</IfModule>
+
