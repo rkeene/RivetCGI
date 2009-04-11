@@ -771,7 +771,7 @@ proc rivet_cgi_server_request_data {hostport sock addr} {
 		dup $sock stdout
 		dup $sock stdin
 
-		if [[catch {
+		if {[catch {
 			call_page [array get myenv]
 		} err]} {
 			tcl_puts stderr "($sock/$addr) Error: $err"
