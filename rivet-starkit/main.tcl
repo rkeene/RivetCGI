@@ -656,15 +656,15 @@ proc rivet_cgi_server {addr port foreground} {
 	}
 
 	if {$addr == "ALL"} {
-		socket -server [list rivet_cgi_server_request $canfork] $port
+		socket -server [list rivet_cgi_server_request $canfork $port] $port
 	} else {
-		socket -server [list rivet_cgi_server_request $canfork] -myaddr $addr $port
+		socket -server [list rivet_cgi_server_request $canfork $port] -myaddr $addr $port
 	}
 
 	vwait __FOREVER__
 }
 
-proc rivet_cgi_server_request {canfork sock addr port} {
+proc rivet_cgi_server_request {canfork hostport sock addr port} {
 	if {$canfork} {
 		# Fork off a child to handle the request, if fork is available
 		set mypid [fork]
@@ -678,12 +678,15 @@ proc rivet_cgi_server_request {canfork sock addr port} {
 
 	# Cleanup socket information
 	unset -nocomplain ::rivetstarkit::sockinfo($sock)
+	set ::rivetstarkit::sockinfo($sock) [list state NEW]
 
 	# Handle connection from data
-	fileevent $sock readable [list rivet_cgi_server_request_data $sock $addr]
+	fileevent $sock readable [list rivet_cgi_server_request_data $hostport $sock $addr]
 }
 
-proc rivet_cgi_server_request_data {sock addr} {
+proc rivet_cgi_server_request_data {hostport sock addr} {
+	array set sockinfo $::rivetstarkit::sockinfo($sock)
+
 	gets $sock line
 
 	if {$line == "" && [eof $sock]} {
@@ -693,7 +696,75 @@ proc rivet_cgi_server_request_data {sock addr} {
 		return
 	}
 
-	tcl_puts "($sock) $line"
+	switch -- $sockinfo(state) {
+		"NEW" {
+			set work [split $line " "]
+			set sockinfo(method) [string toupper [lindex $work 0]]
+			set sockinfo(httpproto) [string toupper [lindex $work end]]
+			set sockinfo(state) HEADERS
+
+			set sockinfo(url) [join [lrange $work 1 end-1] " "]
+
+			set work [split $sockinfo(url) ?]
+			set sockinfo(path) [lindex $work 0]
+			if {[llength $work] > 1} {
+				set sockinfo(query) [join [lrange $work 1 end] ?]
+			}
+
+			# We only support GET and POST, everyone else we just close on.
+			if {$sockinfo(method) != "GET" && $sockinfo(method) != "POST"} {
+				close $sock
+			}
+		}
+		"HEADERS" {
+			if {$line == ""} {
+				set sockinfo(state) HANDLEREQUEST
+			} else {
+				set work [split $line :]
+				set headervar [string toupper [lindex $work 0]]
+				set headerval [join [lrange $work 1 end] :]
+				lappend sockinfo(headers) $headervar $headerval
+			}
+		}
+	}
+
+	if {$sockinfo(state) == "HANDLEREQUEST"} {
+		array set headers $sockinfo(headers)
+		if {![info exists headers(HOST)]} {
+			set localinfo [fconfigure $sock -sockname]
+			set headers(HOST) [lindex $localinfo 1]
+		}
+
+		set myenv(GATEWAY_INTERFACE) "CGI/1.1"
+		set myenv(SERVER_SOFTWARE) "Rivet Starkit"
+		set myenv(SERVER_NAME) $headers(HOST)
+		set myenv(SERVER_PROTOCOL) $sockinfo(httpproto)
+		set myenv(SERVER_PORT) $hostport
+		set myenv(REQUEST_METHOD) $sockinfo(method)
+		set myenv(REMOTE_ADDR) $addr
+		set myenv(PATH_INFO) $sockinfo(path)
+		if {[info exists sockinfo(query)]} {
+			set myenv(QUERY_STRING) $sockinfo(query)
+		}
+
+		tcl_puts $sock "HTTP/1.1 200 OK"
+		tcl_puts $sock "Date: [clock format [clock seconds] -format {%a, %d %b %Y %H:%M:%S GMT} -gmt 1]"
+		tcl_puts $sock "Server: Default"
+
+		tcl_puts ""
+		tcl_puts "OK"
+
+		unset sockinfo
+		if {$headers(CONNECTION) == "keep-alive"} {
+			set sockinfo(state) NEW
+		} else {
+			catch {
+				close $sock
+			}
+		}
+	}
+
+	set ::rivetstarkit::sockinfo($sock) [array get sockinfo]
 }
 
 namespace eval ::rivetstarkit { }
