@@ -628,7 +628,7 @@ proc call_page {} {
 	}
 }
 
-proc print_help {
+proc print_help {} {
 	tcl_puts "Usage: [file tail $argv0] {--server \[--address <address>\] \[--port <port>\]"
 	tcl_puts "                       \[--foreground {yes|no}\]|--cgi|--help|--version}"
 	tcl_puts "   --server           Run in standalone server mode"
