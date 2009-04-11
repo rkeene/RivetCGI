@@ -612,15 +612,15 @@ proc call_page {} {
 	
 	# Dump static files
 	if {[info exists statictype]} {
-		tcl::puts "Content-type: $statictype"
+		tcl_puts "Content-type: $statictype"
 		catch {
-			tcl::puts "Last-Modified: [clock format [file mtime $targetfile] -format {%a, %d %b %Y %H:%M:%S GMT} -gmt 1]"
-			tcl::puts "Expires: Tue, 19 Jan 2038 03:14:07 GMT"
+			tcl_puts "Last-Modified: [clock format [file mtime $targetfile] -format {%a, %d %b %Y %H:%M:%S GMT} -gmt 1]"
+			tcl_puts "Expires: Tue, 19 Jan 2038 03:14:07 GMT"
 		}
 		catch {
-			tcl::puts "Content-Length: [file size $targetfile]"
+			tcl_puts "Content-Length: [file size $targetfile]"
 		}
-		tcl::puts ""
+		tcl_puts ""
 	
 		set fd [open $targetfile r]
 		fconfigure $fd -encoding binary -translation {binary binary}
@@ -632,7 +632,7 @@ proc call_page {} {
 
 # Determine if we are being called as a CGI, or from the command line
 if {![info exists ::env(GATEWAY_INTERFACE)]} {
-	tcl::puts "Usage: $argv0 ..."
+	tcl_puts "Usage: $argv0 ..."
 } else {
 	call_page
 }
