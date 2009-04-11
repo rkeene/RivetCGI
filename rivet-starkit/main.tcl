@@ -7,6 +7,7 @@ starkit::startup
 
 proc call_page {useenv} {
 	array set env $useenv
+
 	# Determine if a sub-file has been requested
 	## Sanity check
 	set indexfiles [list index.rvt index.html index.htm __RIVETSTARKIT_INDEX__]
@@ -93,6 +94,10 @@ proc call_page {useenv} {
 	# Determine what to do with the file based on its filename
 	switch -glob -- [string tolower $targetfile] {
 		"*.rvt" {
+			global env
+			unset -nocomplain env
+			array set env $useenv
+
 			cd [file dirname $targetfile]
 	
 			if {[catch {
@@ -722,7 +727,7 @@ proc rivet_cgi_server_request_data {hostport sock addr} {
 			} else {
 				set work [split $line :]
 				set headervar [string toupper [lindex $work 0]]
-				set headerval [join [lrange $work 1 end] :]
+				set headerval [string trim [join [lrange $work 1 end] :]]
 				lappend sockinfo(headers) $headervar $headerval
 			}
 		}
@@ -747,11 +752,15 @@ proc rivet_cgi_server_request_data {hostport sock addr} {
 			set myenv(QUERY_STRING) $sockinfo(query)
 		}
 
-		tcl_puts $sock "HTTP/1.1 200 OK"
-		tcl_puts $sock "Date: [clock format [clock seconds] -format {%a, %d %b %Y %H:%M:%S GMT} -gmt 1]"
-		tcl_puts $sock "Server: Default"
+		catch {
+			tcl_puts $sock "HTTP/1.1 200 OK"
+			tcl_puts $sock "Date: [clock format [clock seconds] -format {%a, %d %b %Y %H:%M:%S GMT} -gmt 1]"
+			tcl_puts $sock "Server: Default"
+		}
 
-		puts "$sock/$addr: call_page [array get myenv]"
+		catch {
+			tcl_puts "$sock/$addr: call_page [array get myenv]"
+		}
 
 		set origstdout [dup stdout]
 		set origstdin [dup stdin]
@@ -759,7 +768,9 @@ proc rivet_cgi_server_request_data {hostport sock addr} {
 		dup $sock stdout
 		dup $sock stdin
 
-		call_page [array get myenv]
+		catch {
+			call_page [array get myenv]
+		}
 
 		dup $origstdout stdout
 		dup $origstdin stdin
