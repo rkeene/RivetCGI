@@ -762,7 +762,7 @@ proc rivet_cgi_server_request_data {hostport sock addr} {
 		}
 
 		catch {
-			tcl_puts "$sock/$addr: call_page [array get myenv]"
+			tcl_puts stderr "$sock/$addr: call_page [array get myenv]"
 		}
 
 		set origstdout [dup stdout]
@@ -771,8 +771,10 @@ proc rivet_cgi_server_request_data {hostport sock addr} {
 		dup $sock stdout
 		dup $sock stdin
 
-		catch {
+		if [[catch {
 			call_page [array get myenv]
+		} err]} {
+			tcl_puts stderr "($sock/$addr) Error: $err"
 		}
 
 		dup $origstdout stdout
