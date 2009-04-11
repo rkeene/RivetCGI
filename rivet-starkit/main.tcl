@@ -5,17 +5,18 @@ package require tclrivet
 
 starkit::startup
 
-proc call_page {} {
+proc call_page {useenv} {
+	array set env $useenv
 	# Determine if a sub-file has been requested
 	## Sanity check
 	set indexfiles [list index.rvt index.html index.htm __RIVETSTARKIT_INDEX__]
-	if {[info exists ::env(PATH_INFO)]} {
-		if {[string match "*..*" $::env(PATH_INFO)]} {
-			unset ::env(PATH_INFO)
+	if {[info exists env(PATH_INFO)]} {
+		if {[string match "*..*" $env(PATH_INFO)]} {
+			unset env(PATH_INFO)
 		}
 	}
-	if {[info exists ::env(PATH_INFO)]} {
-		set targetfile "$::starkit::topdir/$::env(PATH_INFO)"
+	if {[info exists env(PATH_INFO)]} {
+		set targetfile "$::starkit::topdir/$env(PATH_INFO)"
 	} else {
 		foreach chk_indexfile $indexfiles {
 			set targetfile [file join $::starkit::topdir $chk_indexfile]
@@ -641,25 +642,61 @@ proc print_help {} {
 }
 
 proc rivet_cgi_server {addr port foreground} {
-	package require Tclx
+	catch {
+		package require Tclx
+	}
+
+	set canfork 0
+	catch {
+		set canfork [infox have_waitpid]
+	}
 
 	if {!$foreground} {
 		# XXX: Todo, become daemon.
 	}
 
 	if {$addr == "ALL"} {
-		socket -server rivet_cgi_server_request $port
+		socket -server [list rivet_cgi_server_request $canfork] $port
 	} else {
-		socket -server rivet_cgi_server_request -myaddr $addr $port
+		socket -server [list rivet_cgi_server_request $canfork] -myaddr $addr $port
 	}
 
 	vwait __FOREVER__
 }
 
-proc rivet_cgi_server_request {sock addr port} {
-	close $sock
-	return
+proc rivet_cgi_server_request {canfork sock addr port} {
+	if {$canfork} {
+		# Fork off a child to handle the request, if fork is available
+		set mypid [fork]
+		if {$mypid != 0} {
+			catch {
+				close $sock
+			}
+			return
+		}
+	}
+
+	# Cleanup socket information
+	unset -nocomplain ::rivetstarkit::sockinfo($sock)
+
+	# Handle connection from data
+	fileevent $sock readable [list rivet_cgi_server_request_data $sock $addr]
 }
+
+proc rivet_cgi_server_request_data {sock addr} {
+	gets $sock line
+
+	if {$line == "" && [eof $sock]} {
+		catch {
+			close $sock
+		}
+		return
+	}
+
+	tcl_puts "($sock) $line"
+}
+
+namespace eval ::rivetstarkit { }
 
 # Determine if we are being called as a CGI, or from the command line
 if {![info exists ::env(GATEWAY_INTERFACE)]} {
@@ -683,7 +720,7 @@ if {![info exists ::env(GATEWAY_INTERFACE)]} {
 			exit 1
 		}
 		"--cgi" {
-			call_page
+			call_page [array get ::env]
 			exit 0
 		}
 		"--help" {
@@ -700,6 +737,6 @@ if {![info exists ::env(GATEWAY_INTERFACE)]} {
 		}
 	}
 } else {
-	call_page
+	call_page [array get ::env]
 }
 
