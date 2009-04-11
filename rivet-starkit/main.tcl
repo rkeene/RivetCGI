@@ -751,8 +751,11 @@ proc rivet_cgi_server_request_data {hostport sock addr} {
 		tcl_puts $sock "Date: [clock format [clock seconds] -format {%a, %d %b %Y %H:%M:%S GMT} -gmt 1]"
 		tcl_puts $sock "Server: Default"
 
+		puts "$sock/$addr: call_page [array get myenv]"
+
 		set origstdout [dup stdout]
 		set origstdin [dup stdin]
+
 		dup $sock stdout
 		dup $sock stdin
 
