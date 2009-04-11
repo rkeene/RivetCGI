@@ -1,6 +1,8 @@
 #! /usr/bin/env tclsh
 
 package require starkit
+package require tclrivet
+
 starkit::startup
 
 proc call_page {} {
@@ -89,10 +91,8 @@ proc call_page {} {
 	}
 	
 	# Determine what to do with the file based on its filename
-	## cat /etc/httpd/mime.types | sed 's@#.*$@@' | while read mt exts; do if [ -z "${exts}" ]; then continue; fi; cb=""; for ext in $exts; do cb="${cb} \"*.${ext}\" - "; done; cb="${cb} { set statictype \"$mt\" }"; echo $cb; done | grep -v 'application/octet-stream' | sed 's@ - {@ {@' | sed 's@^@\t@'; # } }
 	switch -glob -- [string tolower $targetfile] {
 		"*.rvt" {
-			package require tclrivet
 	
 			cd [file dirname $targetfile]
 	
@@ -612,15 +612,15 @@ proc call_page {} {
 	
 	# Dump static files
 	if {[info exists statictype]} {
-		puts "Content-type: $statictype"
+		tcl::puts "Content-type: $statictype"
 		catch {
-			puts "Last-Modified: [clock format [file mtime $targetfile] -format {%a, %d %b %Y %H:%M:%S GMT} -gmt 1]"
-			puts "Expires: Tue, 19 Jan 2038 03:14:07 GMT"
+			tcl::puts "Last-Modified: [clock format [file mtime $targetfile] -format {%a, %d %b %Y %H:%M:%S GMT} -gmt 1]"
+			tcl::puts "Expires: Tue, 19 Jan 2038 03:14:07 GMT"
 		}
 		catch {
-			puts "Content-Length: [file size $targetfile]"
+			tcl::puts "Content-Length: [file size $targetfile]"
 		}
-		puts ""
+		tcl::puts ""
 	
 		set fd [open $targetfile r]
 		fconfigure $fd -encoding binary -translation {binary binary}
@@ -632,7 +632,7 @@ proc call_page {} {
 
 # Determine if we are being called as a CGI, or from the command line
 if {![info exists ::env(GATEWAY_INTERFACE)]} {
-	puts "Usage: $argv0 ..."
+	tcl::puts "Usage: $argv0 ..."
 } else {
 	call_page
 }
