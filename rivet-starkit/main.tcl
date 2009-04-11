@@ -94,9 +94,8 @@ proc call_page {useenv} {
 	# Determine what to do with the file based on its filename
 	switch -glob -- [string tolower $targetfile] {
 		"*.rvt" {
-			global env
-			unset -nocomplain env
-			array set env $useenv
+			unset -nocomplain ::env
+			array set ::env $useenv
 
 			cd [file dirname $targetfile]
 	
