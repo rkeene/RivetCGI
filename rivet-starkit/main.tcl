@@ -735,6 +735,9 @@ proc rivet_cgi_server_request_data {hostport sock addr} {
 
 	if {$sockinfo(state) == "HANDLEREQUEST"} {
 		array set headers $sockinfo(headers)
+		if {![info exists headers(CONNECTION)]} {
+			set headers(CONNECTION) "close"
+		}
 		if {![info exists headers(HOST)]} {
 			set localinfo [fconfigure $sock -sockname]
 			set headers(HOST) [lindex $localinfo 1]
@@ -742,7 +745,7 @@ proc rivet_cgi_server_request_data {hostport sock addr} {
 
 		set myenv(GATEWAY_INTERFACE) "CGI/1.1"
 		set myenv(SERVER_SOFTWARE) "Rivet Starkit"
-		set myenv(SERVER_NAME) $headers(HOST)
+		set myenv(SERVER_NAME) [lindex [split $headers(HOST) :] 0]
 		set myenv(SERVER_PROTOCOL) $sockinfo(httpproto)
 		set myenv(SERVER_PORT) $hostport
 		set myenv(REQUEST_METHOD) $sockinfo(method)
