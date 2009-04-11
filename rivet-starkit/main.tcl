@@ -68,23 +68,22 @@ proc call_page {} {
 	
 	# Check for file existance
 	if {![file exists $targetfile]} {
-		puts "Content-type: text/html"
+		tcl_puts "Content-type: text/html"
 		if {$targetfile == "__RIVETSTARKIT_FORBIDDEN__"} {
 			# Return a 403 (Forbidden)
-			puts "Status: 403 Forbidden"
-			puts ""
-			puts "<html><head><title>Forbidden</title></head><body><h1>File Access Forbidden</h1></body>"
+			tcl_puts "Status: 403 Forbidden"
+			tcl_puts ""
+			tcl_puts "<html><head><title>Forbidden</title></head><body><h1>File Access Forbidden</h1></body>"
 		} elseif {[file tail $targetfile] == "__RIVETSTARKIT_INDEX__"} {
 			# Return a 403 (Forbidden)
-			puts "Status: 403 Forbidden"
-			puts ""
-			puts "<html><head><title>Directory Listing Forbidden</title></head><body><h1>Directory Listing Forbidden</h1></body>"
+			tcl_puts "Status: 403 Forbidden"
+			tcl_puts ""
+			tcl_puts "<html><head><title>Directory Listing Forbidden</title></head><body><h1>Directory Listing Forbidden</h1></body>"
 		} else {
 			# Return a 404 (File Not Found)
-			headers numeric 404
-			puts "Status: 404 Not Found"
-			puts ""
-			puts "<html><head><title>File Not Found</title></head><body><h1>File Not Found</h1></body>"
+			tcl_puts "Status: 404 Not Found"
+			tcl_puts ""
+			tcl_puts "<html><head><title>File Not Found</title></head><body><h1>File Not Found</h1></body>"
 		}
 	
 		exit 0
@@ -93,7 +92,6 @@ proc call_page {} {
 	# Determine what to do with the file based on its filename
 	switch -glob -- [string tolower $targetfile] {
 		"*.rvt" {
-	
 			cd [file dirname $targetfile]
 	
 			if {[catch {
@@ -630,9 +628,77 @@ proc call_page {} {
 	}
 }
 
+proc print_help {
+	tcl_puts "Usage: [file tail $argv0] {--server \[--address <address>\] \[--port <port>\]"
+	tcl_puts "                       \[--foreground {yes|no}\]|--cgi|--help|--version}"
+	tcl_puts "   --server           Run in standalone server mode"
+	tcl_puts "   --address address  Listen on address for HTTP requests (server mode, default is \"ALL\")"
+	tcl_puts "   --port portno      Listen on port for HTTP requests (server mode, default is \"80\")"
+	tcl_puts "   --foreground fg    Run in foreground (server mode, default is \"no\")"
+	tcl_puts "   --cgi              Execute as a CGI"
+	tcl_puts "   --help             This help"
+	tcl_puts "   --version          Print version and exit"
+}
+
+proc rivet_cgi_server {addr port foreground} {
+	package require Tclx
+
+	if {!$foreground} {
+		# XXX: Todo, become daemon.
+	}
+
+	if {$addr == "ALL"} {
+		socket -server rivet_cgi_server_request $port
+	} else {
+		socket -server rivet_cgi_server_request -myaddr $addr $port
+	}
+
+	vwait __FOREVER__
+}
+
+proc rivet_cgi_server_request {sock addr port} {
+	close $sock
+	return
+}
+
 # Determine if we are being called as a CGI, or from the command line
 if {![info exists ::env(GATEWAY_INTERFACE)]} {
-	tcl_puts "Usage: $argv0 ..."
+	set cmd [lindex $argv 0]
+	set argv [lrange $argv 1 end]
+
+	switch -- $cmd {
+		"--server" {
+			set options(--address) "ALL"
+			set options(--port) 80
+			set options(--foreground) no
+			array set options $argv
+
+			set rivet_cgi_server_addr $options(--address)
+			set rivet_cgi_server_port $options(--port)
+			set rivet_cgi_server_fg [expr !!($options(--foreground))]
+
+			rivet_cgi_server $rivet_cgi_server_addr $rivet_cgi_server_port $rivet_cgi_server_fg
+
+			# If rivet_cgi_server returns, something went wrong...
+			exit 1
+		}
+		"--cgi" {
+			call_page
+			exit 0
+		}
+		"--help" {
+			print_help
+			exit 0
+		}
+		"--version" {
+			tcl_puts "RivetStarkit version @@VERS@@"
+			exit 0
+		}
+		default {
+			print_help
+			exit 1
+		}
+	}
 } else {
 	call_page
 }
