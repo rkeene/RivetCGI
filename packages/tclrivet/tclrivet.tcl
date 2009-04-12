@@ -41,7 +41,7 @@ proc include { filename } {
 namespace eval rivet {}
 namespace eval rivet {
 	proc reset {} {
-		unset -nocomplain ::rivet::header_pairs ::rivet::statuscode ::rivet::header_redirect ::rivet::cache_vars ::rivet::cache_vars_qs ::rivet::cache_vars_post ::rivet::cache_vars_contenttype ::rivet::cache_vars_contenttype_var ::rivet::cache_tmpdir ntenttype_var
+		unset -nocomplain ::rivet::header_pairs ::rivet::statuscode ::rivet::header_redirect ::rivet::cache_vars ::rivet::cache_vars_qs ::rivet::cache_vars_post ::rivet::cache_vars_contenttype ::rivet::cache_vars_contenttype_var ::rivet::cache_tmpdir
 
 		array set ::rivet::header_pairs {}
 		set ::rivet::header_type "text/html"
@@ -273,7 +273,7 @@ proc _var args {
 
 		if {$use_post} {
 			if {[info exists env(CONTENT_TYPE)]} {
-				set work [split $::env(CONTENT_TYPE) {;}]
+				set work [split $env(CONTENT_TYPE) {;}]
 				set contenttype [lindex $work 0]
 				set vars [lrange $work 1 end]
 
@@ -290,14 +290,18 @@ proc _var args {
 			}
 
 			if {$::rivet::cache_vars_contenttype != "multipart/form-data"} {
-				set vars_post [read stdin]
+				if {[info exists env(CONTENT_LENGTH)]} {
+					set vars_post [read stdin $env(CONTENT_LENGTH)]
+				} else {
+					set vars_post [read stdin]
+				}
 			} else {
 				set vars_post ""
 
 				if {[info exists ::rivet::cache_vars_contenttype_var(boundary)]} {
 					# Create temporary directory
-					if {[info exists ::env(TMPDIR)]} {
-						set tmpdir $::env(TMPDIR)
+					if {[info exists env(TMPDIR)]} {
+						set tmpdir $env(TMPDIR)
 					} else {
 						set tmpdir "/tmp"
 					}
