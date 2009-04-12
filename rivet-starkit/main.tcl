@@ -7,6 +7,11 @@ starkit::startup
 
 proc call_page {} {
 	upvar ::env env
+	set outchan stdout
+	if {[info exists env(RIVET_INTERFACE)]} {
+		set outchan [lindex $env(RIVET_INTERFACE) 2]
+	}
+
 
 	# Determine if a sub-file has been requested
 	## Sanity check
@@ -70,22 +75,24 @@ proc call_page {} {
 	
 	# Check for file existance
 	if {![file exists $targetfile]} {
-		tcl_puts "Content-type: text/html"
 		if {$targetfile == "__RIVETSTARKIT_FORBIDDEN__"} {
 			# Return a 403 (Forbidden)
 			rivet_cgi_server_writehttpheader 403
-			tcl_puts ""
-			tcl_puts "<html><head><title>Forbidden</title></head><body><h1>File Access Forbidden</h1></body>"
+			tcl_puts $outchan "Content-type: text/html"
+			tcl_puts $outchan ""
+			tcl_puts $outchan "<html><head><title>Forbidden</title></head><body><h1>File Access Forbidden</h1></body>"
 		} elseif {[file tail $targetfile] == "__RIVETSTARKIT_INDEX__"} {
 			# Return a 403 (Forbidden)
 			rivet_cgi_server_writehttpheader 403
-			tcl_puts ""
-			tcl_puts "<html><head><title>Directory Listing Forbidden</title></head><body><h1>Directory Listing Forbidden</h1></body>"
+			tcl_puts $outchan "Content-type: text/html"
+			tcl_puts $outchan ""
+			tcl_puts $outchan "<html><head><title>Directory Listing Forbidden</title></head><body><h1>Directory Listing Forbidden</h1></body>"
 		} else {
 			# Return a 404 (File Not Found)
 			rivet_cgi_server_writehttpheader 404
-			tcl_puts ""
-			tcl_puts "<html><head><title>File Not Found</title></head><body><h1>File Not Found</h1></body>"
+			tcl_puts $outchan "Content-type: text/html"
+			tcl_puts $outchan ""
+			tcl_puts $outchan "<html><head><title>File Not Found</title></head><body><h1>File Not Found</h1></body>"
 		}
 
 		return
@@ -613,20 +620,20 @@ proc call_page {} {
 	# Dump static files
 	if {[info exists statictype]} {
 		rivet_cgi_server_writehttpheader 200
-		tcl_puts "Content-type: $statictype"
+		tcl_puts $outchan "Content-type: $statictype"
 		catch {
-			tcl_puts "Last-Modified: [clock format [file mtime $targetfile] -format {%a, %d %b %Y %H:%M:%S GMT} -gmt 1]"
-			tcl_puts "Expires: Tue, 19 Jan 2038 03:14:07 GMT"
+			tcl_puts $outchan "Last-Modified: [clock format [file mtime $targetfile] -format {%a, %d %b %Y %H:%M:%S GMT} -gmt 1]"
+			tcl_puts $outchan "Expires: Tue, 19 Jan 2038 03:14:07 GMT"
 		}
 		catch {
-			tcl_puts "Content-Length: [file size $targetfile]"
+			tcl_puts $outchan "Content-Length: [file size $targetfile]"
 		}
-		tcl_puts ""
+		tcl_puts $outchan ""
 	
 		set fd [open $targetfile r]
 		fconfigure $fd -encoding binary -translation {binary binary}
-		fconfigure stdout -encoding binary -translation {binary binary}
-		fcopy $fd stdout
+		fconfigure $outchan -encoding binary -translation {binary binary}
+		fcopy $fd $outchan
 		close $fd
 	}
 }
@@ -767,7 +774,7 @@ proc rivet_cgi_server_request_data {hostport sock addr} {
 		set myenv(REQUEST_METHOD) $sockinfo(method)
 		set myenv(REMOTE_ADDR) $addr
 		set myenv(PATH_INFO) $sockinfo(path)
-		set myenv(RIVET_INTERFACE) "FULLHEADERS"
+		set myenv(RIVET_INTERFACE) [list FULLHEADERS $sock $sock]
 		if {[info exists sockinfo(query)]} {
 			set myenv(QUERY_STRING) $sockinfo(query)
 		}
@@ -795,13 +802,6 @@ proc rivet_cgi_server_request_data {hostport sock addr} {
 			set myenv(HTTP_COOKIE) $headers(COOKIE)
 		}
 
-
-		set origstdout [dup stdout]
-		set origstdin [dup stdin]
-
-		dup $sock stdout
-		dup $sock stdin
-
 		unset -nocomplain ::env
 		array set ::env [array get myenv]
 
@@ -811,9 +811,6 @@ proc rivet_cgi_server_request_data {hostport sock addr} {
 		} err]} {
 			tcl_puts stderr "($sock/$addr/[pid]) Error: $err"
 		}
-
-		dup $origstdout stdout
-		dup $origstdin stdin
 
 		unset sockinfo
 		array set sockinfo {}

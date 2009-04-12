@@ -104,6 +104,11 @@ namespace eval rivet {
 }
 
 proc rivet_flush {} {
+	set outchan stdout
+	if {[info exists ::env(RIVET_INTERFACE)]} {
+		set outchan [lindex $::env(RIVET_INTERFACE) 2]
+	}
+
 	if {!$::rivet::header_sent} {
 		set ::rivet::header_sent 1
 
@@ -114,27 +119,32 @@ proc rivet_flush {} {
 		rivet_cgi_server_writehttpheader $::rivet::statuscode
 
 		if {![info exists ::rivet::header_redirect]} {
-			tcl_puts "Content-type: $::rivet::header_type"
+			tcl_puts $outchan "Content-type: $::rivet::header_type"
 			foreach {var val} [array get ::rivet::header_pairs] {
-				tcl_puts "$var: $val"
+				tcl_puts $outchan "$var: $val"
 			}
 		} else {
-			tcl_puts "Location: $::rivet::header_redirect"
-			tcl_puts ""
+			tcl_puts $outchan "Location: $::rivet::header_redirect"
+			tcl_puts $outchan ""
 			abort_page
 		}
-		tcl_puts ""
+		tcl_puts $outchan ""
 
 		unset -nocomplain ::rivet::statuscode ::rivet::header_redirect ::rivet::header_pairs
 	}
 
 	if {!$::rivet::send_no_content} {
-		tcl_puts -nonewline $::rivet::output_buffer
+		tcl_puts -nonewline $outchan $::rivet::output_buffer
 	}
 	set ::rivet::output_buffer ""
 }
 
 proc rivet_error {} {
+	set outchan stdout
+	if {[info exists ::env(RIVET_INTERFACE)]} {
+		set outchan [lindex $::env(RIVET_INTERFACE) 2]
+	}
+
 	global errorInfo
 	if {[info exists errorInfo]} {
 		set incoming_errorInfo $errorInfo
@@ -144,8 +154,9 @@ proc rivet_error {} {
 
 	if {!$::rivet::header_sent} {
 		set ::rivet::header_sent 1
-		tcl_puts "Content-type: text/html"
-		tcl_puts ""
+		rivet_cgi_server_writehttpheader 200
+		tcl_puts $outchan "Content-type: text/html"
+		tcl_puts $outchan ""
 	}
 
 	set uidprefix ""
@@ -169,15 +180,15 @@ proc rivet_error {} {
 	tcl_puts stderr "$incoming_errorInfo"
 	tcl_puts stderr "END_CASENUMBER=$caseid"
 
-	tcl_puts {<!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML 2.0//EN">}
-	tcl_puts {<html><head>}
-	tcl_puts {<title>Application Error</title>}
-	tcl_puts {</head><body>}
-	tcl_puts {<h1>Application Error</h1>}
-	tcl_puts {<p>An error has occured while processing your request.</p>}
-	tcl_puts "<p>This error has been assigned the case number <tt>$caseid</tt>.</p>"
-	tcl_puts "<p>Please reference this case number if you chose to contact the <a href=\"mailto:$::env(SERVER_ADMIN)?subject=case $caseid\">webmaster</a>"
-	tcl_puts {</body></html>}
+	tcl_puts $outchan {<!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML 2.0//EN">}
+	tcl_puts $outchan {<html><head>}
+	tcl_puts $outchan {<title>Application Error</title>}
+	tcl_puts $outchan {</head><body>}
+	tcl_puts $outchan {<h1>Application Error</h1>}
+	tcl_puts $outchan {<p>An error has occured while processing your request.</p>}
+	tcl_puts $outchan "<p>This error has been assigned the case number <tt>$caseid</tt>.</p>"
+	tcl_puts $outchan "<p>Please reference this case number if you chose to contact the <a href=\"mailto:$::env(SERVER_ADMIN)?subject=case $caseid\">webmaster</a>"
+	tcl_puts $outchan {</body></html>}
 
 }
 
@@ -199,7 +210,7 @@ proc rivet_puts args {
 	if {!$::rivet::header_sent && $fd == "stdout"} {
 		append ::rivet::output_buffer [lindex $args 0]$appendchar
 
-		if {[string length $::rivet::output_buffer] >= 1024} {
+		if {[string length $::rivet::output_buffer] >= 16384} {
 			rivet_flush
 		}
 	} else {
@@ -252,6 +263,11 @@ proc var args {
 }
 
 proc _var args {
+	set inchan stdin
+	if {[info exists ::env(RIVET_INTERFACE)]} {
+		set inchan [lindex $::env(RIVET_INTERFACE) 1]
+	}
+
 	if {![info exists ::rivet::cache_vars]} {
 		global env
 		array set ::rivet::cache_vars {}
@@ -291,9 +307,10 @@ proc _var args {
 
 			if {$::rivet::cache_vars_contenttype != "multipart/form-data"} {
 				if {[info exists env(CONTENT_LENGTH)]} {
-					set vars_post [read stdin $env(CONTENT_LENGTH)]
+					fconfigure $inchan -blocking 1
+					set vars_post [read $inchan $env(CONTENT_LENGTH)]
 				} else {
-					set vars_post [read stdin]
+					set vars_post [read $inchan]
 				}
 			} else {
 				set vars_post ""
@@ -312,11 +329,11 @@ proc _var args {
 					}
 
 					# Copy stdin to file in temporary directory
-					set tmpfile [file join $::rivet::cache_tmpdir stdin]
+					set tmpfile [file join $::rivet::cache_tmpdir $inchan]
 					set tmpfd [open $tmpfile w]
 					fconfigure $tmpfd -translation [list binary binary]
-					fconfigure stdin -translation [list binary binary]
-					fcopy stdin $tmpfd
+					fconfigure $inchan -translation [list binary binary]
+					fcopy $inchan $tmpfd
 					close $tmpfd
 
 					# Split out everything with a content-type into a seperate file, noting this for "upload" to handle
@@ -472,17 +489,20 @@ proc env {var} {
 }
  
 proc rivet_cgi_server_writehttpheader {statuscode} {
+	set outchan stdout
+
 	if {[info exists ::env(RIVET_INTERFACE)]} {
-		if {$::env(RIVET_INTERFACE) == "FULLHEADERS"} {
-			tcl_puts "HTTP/1.1 $statuscode [::rivet::statuscode_to_str $statuscode]"
-			tcl_puts "Date: [clock format [clock seconds] -format {%a, %d %b %Y %H:%M:%S GMT} -gmt 1]"
-			tcl_puts "Server: Default"
-			tcl_puts "Connection: close"
+		set outchan [lindex $::env(RIVET_INTERFACE) 2]
+		if {[lindex $::env(RIVET_INTERFACE) 0] == "FULLHEADERS"} {
+			tcl_puts $outchan "HTTP/1.1 $statuscode [::rivet::statuscode_to_str $statuscode]"
+			tcl_puts $outchan "Date: [clock format [clock seconds] -format {%a, %d %b %Y %H:%M:%S GMT} -gmt 1]"
+			tcl_puts $outchan "Server: Default"
+			tcl_puts $outchan "Connection: close"
 			return
 		}
 	}
 
-	tcl_puts "Status: $statuscode [::rivet::statuscode_to_str $statuscode]"
+	tcl_puts $outchan "Status: $statuscode [::rivet::statuscode_to_str $statuscode]"
 }
 
 proc load_headers args { }
