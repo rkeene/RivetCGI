@@ -688,7 +688,7 @@ proc rivet_cgi_server {addr port foreground initscp logfile errorlogfile} {
 			set elogfd stderr
 		}
 		"" {
-			set elogfd ""
+			set elogfd [open /dev/null a]
 		}
 		default {
 			set elogfd [open $errorlogfile a]
