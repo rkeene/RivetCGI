@@ -737,6 +737,8 @@ proc rivet_cgi_server_request_data {hostport sock addr} {
 	}
 
 	if {$sockinfo(state) == "HANDLEREQUEST"} {
+		fileevent $sock readable ""
+
 		array set headers $sockinfo(headers)
 		if {![info exists headers(CONNECTION)]} {
 			set headers(CONNECTION) "close"
