@@ -87,8 +87,8 @@ proc call_page {} {
 			tcl_puts ""
 			tcl_puts "<html><head><title>File Not Found</title></head><body><h1>File Not Found</h1></body>"
 		}
-	
-		exit 0
+
+		return
 	}
 	
 	# Determine what to do with the file based on its filename
@@ -101,12 +101,12 @@ proc call_page {} {
 			} err]} {
 				rivet_error
 				rivet_flush
-				exit 0
+				return
 			}
 	
 			# Flush the output stream
 			rivet_flush
-			exit 0
+			return
 		}
 		"*.ez" { set statictype "application/andrew-inset" }
 		"*.atom" { set statictype "application/atom+xml" }
