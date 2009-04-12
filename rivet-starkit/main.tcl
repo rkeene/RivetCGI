@@ -646,13 +646,16 @@ proc print_help {} {
 }
 
 proc rivet_cgi_server {addr port foreground} {
-	catch {
-		package require Tclx
-	}
+	package require Tclx
 
 	set canfork 0
 	catch {
 		set canfork [infox have_waitpid]
+	}
+
+	if {!$canfork} {
+		tcl_puts stderr "Error: fork() is not supported on this platform, aborting..."
+		return
 	}
 
 	if {!$foreground} {
@@ -660,24 +663,22 @@ proc rivet_cgi_server {addr port foreground} {
 	}
 
 	if {$addr == "ALL"} {
-		socket -server [list rivet_cgi_server_request $canfork $port] $port
+		socket -server [list rivet_cgi_server_request $port] $port
 	} else {
-		socket -server [list rivet_cgi_server_request $canfork $port] -myaddr $addr $port
+		socket -server [list rivet_cgi_server_request $port] -myaddr $addr $port
 	}
 
 	vwait __FOREVER__
 }
 
-proc rivet_cgi_server_request {canfork hostport sock addr port} {
-	if {$canfork} {
-		# Fork off a child to handle the request, if fork is available
-		set mypid [fork]
-		if {$mypid != 0} {
-			catch {
-				close $sock
-			}
-			return
+proc rivet_cgi_server_request {hostport sock addr port} {
+	# Fork off a child to handle the request
+	set mypid [fork]
+	if {$mypid != 0} {
+		catch {
+			close $sock
 		}
+		return
 	}
 
 	# Cleanup socket information

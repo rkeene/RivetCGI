@@ -107,10 +107,10 @@ proc rivet_flush {} {
 					puts "HTTP/1.1 $::rivet::statuscode [::rivet::statuscode_to_str $::rivet::statuscode]"
 					unset ::rivet::statuscode
 				} else {
-					tcl_puts $sock "HTTP/1.1 200 OK"
+					tcl_puts "HTTP/1.1 200 OK"
 				}
-				tcl_puts $sock "Date: [clock format [clock seconds] -format {%a, %d %b %Y %H:%M:%S GMT} -gmt 1]"
-				tcl_puts $sock "Server: Default"
+				tcl_puts "Date: [clock format [clock seconds] -format {%a, %d %b %Y %H:%M:%S GMT} -gmt 1]"
+				tcl_puts "Server: Default"
 			}
 		}
 
