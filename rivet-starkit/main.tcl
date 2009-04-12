@@ -640,18 +640,21 @@ proc call_page {} {
 
 proc print_help {} {
 	tcl_puts "Usage: [file tail [info nameofexecutable]] {--server \[--address <address>\] \[--port <port>\]"
-	tcl_puts "       \[--foreground {yes|no}\] \[--init <scp>\]|--cgi|--help|--version}"
+	tcl_puts "       \[--foreground {yes|no}\] \[--init <scp>\] \[--logfile {-|<file>}\] \[--errorlog {-|<file>}\]"
+	tcl_puts "       |--cgi|--help|--version}"
 	tcl_puts "   --server           Run in standalone server mode"
 	tcl_puts "   --address address  Listen on address for HTTP requests (server mode, default is \"ALL\")"
 	tcl_puts "   --port portno      Listen on port for HTTP requests (server mode, default is \"80\")"
 	tcl_puts "   --foreground fg    Run in foreground (server mode, default is \"no\")"
 	tcl_puts "   --init script      Run script prior to accepting connections (server mode)"
+	tcl_puts "   --logfile file     Log request information to file (or stdout) (server mode)"
+	tcl_puts "   --errorlog file    Log error information to file (or stderr) (server mode)"
 	tcl_puts "   --cgi              Execute as a CGI"
 	tcl_puts "   --help             This help"
 	tcl_puts "   --version          Print version and exit"
 }
 
-proc rivet_cgi_server {addr port foreground init} {
+proc rivet_cgi_server {addr port foreground initscp logfile errorlogfile} {
 	package require Tclx
 
 	set canfork 0
@@ -664,25 +667,57 @@ proc rivet_cgi_server {addr port foreground init} {
 		return
 	}
 
-	if {$init != ""} {
-		tcl_puts stderr "Calling init: $init"
-		uplevel #0 $init
+	if {$initscp != ""} {
+		uplevel #0 $initscp
 	}
+
+	switch -- $logfile {
+		"-" {
+			set logfd stdout
+		}
+		"" {
+			set logfd ""
+		}
+		default {
+			set logfd [open $logfile a]
+		}
+	}
+
+	switch -- $errorlogfile {
+		"-" {
+			set elogfd stderr
+		}
+		"" {
+			set elogfd ""
+		}
+		default {
+			set elogfd [open $errorlogfile a]
+		}
+	}
+
 
 	if {!$foreground} {
 		# XXX: Todo, become daemon.
 	}
 
 	if {$addr == "ALL"} {
-		socket -server [list rivet_cgi_server_request $port] $port
+		socket -server [list rivet_cgi_server_request $port $logfd $elogfd] $port
 	} else {
-		socket -server [list rivet_cgi_server_request $port] -myaddr $addr $port
+		socket -server [list rivet_cgi_server_request $port $logfd $elogfd] -myaddr $addr $port
 	}
 
 	vwait __FOREVER__
 }
 
-proc rivet_cgi_server_request {hostport sock addr port} {
+proc rivet_cgi_server_request {hostport logfd elogfd sock addr port} {
+	# Flush log descriptor, so buffer doesn't contain any extra data.
+	if {$logfd != ""} {
+		flush $logfd
+	}
+	if {$elogfd != ""} {
+		flush $elogfd
+	}
+
 	# Fork off a child to handle the request
 	set mypid [fork]
 	if {$mypid != 0} {
@@ -698,7 +733,7 @@ proc rivet_cgi_server_request {hostport sock addr port} {
 	set ::rivetstarkit::finished($sock) 0
 
 	# Handle connection from data
-	fileevent $sock readable [list rivet_cgi_server_request_data $hostport $sock $addr]
+	fileevent $sock readable [list rivet_cgi_server_request_data $sock $addr $hostport $logfd $elogfd]
 
 	vwait ::rivetstarkit::finished($sock)
 
@@ -706,10 +741,14 @@ proc rivet_cgi_server_request {hostport sock addr port} {
 		close $sock
 	}
 
+	catch {
+		update
+	}
+
 	exit
 }
 
-proc rivet_cgi_server_request_data {hostport sock addr} {
+proc rivet_cgi_server_request_data {sock addr hostport logfd elogfd} {
 	array set sockinfo $::rivetstarkit::sockinfo($sock)
 
 	gets $sock line
@@ -723,6 +762,7 @@ proc rivet_cgi_server_request_data {hostport sock addr} {
 
 	switch -- $sockinfo(state) {
 		"NEW" {
+			set sockinfo(requestline) $line
 			set work [split $line " "]
 			set sockinfo(method) [string toupper [lindex $work 0]]
 			set sockinfo(httpproto) [string toupper [lindex $work end]]
@@ -755,9 +795,17 @@ proc rivet_cgi_server_request_data {hostport sock addr} {
 	}
 
 	if {$sockinfo(state) == "HANDLEREQUEST"} {
+		array set headers $sockinfo(headers)
+
+		# Write log entry
+		if {[info exists headers(USER-AGENT)]} {
+			set ua $headers(USER-AGENT)
+		} else {
+			set ua "-"
+		}
+
 		fileevent $sock readable ""
 
-		array set headers $sockinfo(headers)
 		if {![info exists headers(CONNECTION)]} {
 			set headers(CONNECTION) "close"
 		}
@@ -766,6 +814,8 @@ proc rivet_cgi_server_request_data {hostport sock addr} {
 			set headers(HOST) [lindex $localinfo 1]
 		}
 
+		# Create CGI/1.1 compatible environment
+		## Standard variables
 		set myenv(GATEWAY_INTERFACE) "CGI/1.1"
 		set myenv(SERVER_SOFTWARE) "Rivet Starkit"
 		set myenv(SERVER_NAME) [lindex [split $headers(HOST) :] 0]
@@ -774,12 +824,10 @@ proc rivet_cgi_server_request_data {hostport sock addr} {
 		set myenv(REQUEST_METHOD) $sockinfo(method)
 		set myenv(REMOTE_ADDR) $addr
 		set myenv(PATH_INFO) $sockinfo(path)
-		set myenv(RIVET_INTERFACE) [list FULLHEADERS $sock $sock]
 		if {[info exists sockinfo(query)]} {
 			set myenv(QUERY_STRING) $sockinfo(query)
 		}
-
-		# Post requests have additional information
+		## Post requests have additional information
 		if {$sockinfo(method) == "POST"} {
 			if {[info exists headers(CONTENT-TYPE)]} {
 				set myenv(CONTENT_TYPE) $headers(CONTENT-TYPE)
@@ -788,38 +836,61 @@ proc rivet_cgi_server_request_data {hostport sock addr} {
 				set myenv(CONTENT_LENGTH) $headers(CONTENT-LENGTH)
 			}
 		}
-
-		# Additional variables
+		## Additional variables
 		if {[info exists headers(ACCEPT)]} {
 			set myenv(HTTP_ACCEPT) $headers(ACCEPT)
 		}
 		if {[info exists headers(USER-AGENT)]} {
 			set myenv(HTTP_USER_AGENT) $headers(USER-AGENT)
 		}
-
-		# Cookies
+		## Cookies
 		if {[info exists headers(COOKIE)]} {
 			set myenv(HTTP_COOKIE) $headers(COOKIE)
 		}
 
+		# Add Rivet Interface specification to fake environment, so further
+		# Rivet/CGI knows how to interface
+		set myenv(RIVET_INTERFACE) [list FULLHEADERS $sock $sock $elogfd]
+
+		# Swap the environment out
 		unset -nocomplain ::env
 		array set ::env [array get myenv]
 
+		# Call "call_page" with the new enivronment
 		if {[catch {
-			tcl_puts stderr "($sock/$addr/[pid]) Debug: [array get ::env] ++ headers = [array get headers] ++ ::rivet::header_sent = $::rivet::header_sent"
+#			if {$logfd != ""} {
+#				tcl_puts $logfd "($sock/$addr/[pid]) Debug: [array get ::env] ++ headers = [array get headers] ++ ::rivet::header_sent = $::rivet::header_sent"
+#				flush $logfd
+#			}
 			call_page
+
+			if {$logfd != ""} {
+				tcl_puts $logfd "$addr - - \[[clock format [clock seconds] -format {%d/%b/%Y:%H:%M:%S %z}]\] \"$sockinfo(requestline)\" 200 0 \"-\" \"$ua\""
+				flush $logfd
+			}
 		} err]} {
-			tcl_puts stderr "($sock/$addr/[pid]) Error: $err"
+			if {$logfd != ""} {
+				tcl_puts $logfd "$addr - - \[[clock format [clock seconds] -format {%d/%b/%Y:%H:%M:%S %z}]\] \"$sockinfo(requestline)\" 500 0 \"-\" \"$ua\" \"Error: [join [split $err {"\n}]]\""
+				flush $logfd
+			}
+			if {$elogfd != ""} {
+				tcl_puts $elogfd "$err"
+				tcl_puts $elogfd "$::errorInfo"
+				flush $elogfd
+			}
 		}
 
+		# Cleanup
 		unset sockinfo
 		array set sockinfo {}
+
+		# Tell the event loop that we're done here.
 		set ::rivetstarkit::finished($sock) 1
 		catch {
 			close $sock
 		}
 	}
-
+ 
 	set ::rivetstarkit::sockinfo($sock) [array get sockinfo]
 }
 
@@ -836,14 +907,18 @@ if {![info exists ::env(GATEWAY_INTERFACE)]} {
 			set options(--port) 80
 			set options(--foreground) no
 			set options(--init) ""
+			set options(--logfile) ""
+			set options(--errorlog) ""
 			array set options $argv
 
 			set rivet_cgi_server_addr $options(--address)
 			set rivet_cgi_server_port $options(--port)
 			set rivet_cgi_server_fg [expr !!($options(--foreground))]
 			set rivet_cgi_server_init $options(--init)
+			set rivet_cgi_server_logfile $options(--logfile)
+			set rivet_cgi_server_errorlogfile $options(--errorlog)
 
-			rivet_cgi_server $rivet_cgi_server_addr $rivet_cgi_server_port $rivet_cgi_server_fg $rivet_cgi_server_init
+			rivet_cgi_server $rivet_cgi_server_addr $rivet_cgi_server_port $rivet_cgi_server_fg $rivet_cgi_server_init $rivet_cgi_server_logfile $rivet_cgi_server_errorlogfile
 
 			# If rivet_cgi_server returns, something went wrong...
 			exit 1

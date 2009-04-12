@@ -141,8 +141,10 @@ proc rivet_flush {} {
 
 proc rivet_error {} {
 	set outchan stdout
+	set errchan stderr
 	if {[info exists ::env(RIVET_INTERFACE)]} {
 		set outchan [lindex $::env(RIVET_INTERFACE) 2]
+		set errchan [lindex $::env(RIVET_INTERFACE) 3]
 	}
 
 	global errorInfo
@@ -174,11 +176,11 @@ proc rivet_error {} {
 		set ::env(SERVER_ADMIN) ""
 	}
 
-	tcl_puts stderr "BEGIN_CASENUMBER=$caseid"
-	tcl_puts stderr "GLOBALS: [info globals]"
-	tcl_puts stderr "***********************"
-	tcl_puts stderr "$incoming_errorInfo"
-	tcl_puts stderr "END_CASENUMBER=$caseid"
+	tcl_puts $errchan "BEGIN_CASENUMBER=$caseid"
+	tcl_puts $errchan "GLOBALS: [info globals]"
+	tcl_puts $errchan "***********************"
+	tcl_puts $errchan "$incoming_errorInfo"
+	tcl_puts $errchan "END_CASENUMBER=$caseid"
 
 	tcl_puts $outchan {<!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML 2.0//EN">}
 	tcl_puts $outchan {<html><head>}
