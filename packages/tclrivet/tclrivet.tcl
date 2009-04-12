@@ -97,6 +97,12 @@ namespace eval rivet {
 	}
 }
 
+proc rivet_reset {} {
+	foreach var [info vars ::rivet::*] {
+		unset -nocomplain $var
+	}
+}
+
 proc rivet_flush {} {
 	if {!$::rivet::header_sent} {
 		set ::rivet::header_sent 1
@@ -118,6 +124,8 @@ proc rivet_flush {} {
 			abort_page
 		}
 		tcl_puts ""
+
+		unset -nocomplain ::rivet::statuscode ::rivet::header_redirect ::rivet::header_pairs
 	}
 
 	if {!$::rivet::send_no_content} {
