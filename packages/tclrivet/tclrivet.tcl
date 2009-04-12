@@ -40,11 +40,17 @@ proc include { filename } {
 
 namespace eval rivet {}
 namespace eval rivet {
-	array set header_pairs {}
-	set header_type "text/html"
-	set header_sent 0
-	set output_buffer ""
-	set send_no_content 0
+	proc reset {} {
+		foreach var [info vars ::rivet::*] {
+			unset -nocomplain $var
+		}
+
+		array set ::rivet::header_pairs {}
+		set ::rivet::header_type "text/html"
+		set ::rivet::header_sent 0
+		set ::rivet::output_buffer ""
+		set ::rivet::send_no_content 0
+	}
 
 	proc statuscode_to_str {sc} {
 		switch -- $sc {
@@ -95,12 +101,8 @@ namespace eval rivet {
 
 		return $retval
 	}
-}
 
-proc rivet_reset {} {
-	foreach var [info vars ::rivet::*] {
-		unset -nocomplain $var
-	}
+	::rivet::reset
 }
 
 proc rivet_flush {} {
