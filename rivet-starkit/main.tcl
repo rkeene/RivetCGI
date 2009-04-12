@@ -697,7 +697,27 @@ proc rivet_cgi_server {addr port foreground initscp logfile errorlogfile} {
 
 
 	if {!$foreground} {
-		# XXX: Todo, become daemon.
+		set mypid [fork]
+		if {$mypid != 0} {
+			# Parent
+			wait
+			exit
+		}
+
+		# Child
+		set mypid [fork]
+		if {$mypid != 0} {
+			exit
+		}
+
+		# Grand-child
+		close stdin
+		close stdout
+		close stderr
+		open /dev/null r
+		open /dev/null w
+		open /dev/null w
+		cd /
 	}
 
 	if {$addr == "ALL"} {
