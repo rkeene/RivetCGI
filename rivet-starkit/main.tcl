@@ -106,11 +106,15 @@ proc call_page {} {
 			set env(SCRIPT_FILENAME) $targetfile
 			if {[info exists env(REQUEST_URI)]} {
 				set scriptfilenamework [lrange [file split $targetfile] 1 end]
-				for {set idx 0} {$idx < [llength $scriptfilenamework]} {incr idx} {
-					set chkpath "/[join [lrange $scriptfilenamework $idx end] {/}]"
-					if {[string match "$chkpath*" $env(REQUEST_URI)]} {
-						set env(SCRIPT_NAME) $chkpath
-						break
+				set requesturiwork [lrange [split $env(REQUEST_URI) /] 1 end]
+				for {set ruidx 0} {$ruidx < [llength $requesturiwork]} {incr ruidx} {
+					set chkuri "/[join [lrange $requesturiwork 0 end-$ruidx] /]"
+					for {set sfidx 0} {$sfidx < [llength $scriptfilenamework]} {incr sfidx} {
+						set chkpath "/[join [lrange $scriptfilenamework $sfidx end] {/}]"
+						if {[string match "$chkpath*" $chkuri]} {
+							set env(SCRIPT_NAME) $chkpath
+							break
+						}
 					}
 				}
 			}
