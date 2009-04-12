@@ -41,9 +41,7 @@ proc include { filename } {
 namespace eval rivet {}
 namespace eval rivet {
 	proc reset {} {
-		foreach var [info vars ::rivet::*] {
-			unset -nocomplain $var
-		}
+		unset -nocomplain ::rivet::header_pairs ::rivet::statuscode ::rivet::header_redirect ::rivet::cache_vars ::rivet::cache_vars_qs ::rivet::cache_vars_post ::rivet::cache_vars_contenttype ::rivet::cache_vars_contenttype_var ::rivet::cache_tmpdir ntenttype_var
 
 		array set ::rivet::header_pairs {}
 		set ::rivet::header_type "text/html"
