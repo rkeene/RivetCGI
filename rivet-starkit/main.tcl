@@ -750,18 +750,13 @@ proc rivet_cgi_server_request_data {hostport sock addr} {
 		set myenv(REQUEST_METHOD) $sockinfo(method)
 		set myenv(REMOTE_ADDR) $addr
 		set myenv(PATH_INFO) $sockinfo(path)
+		set myenv(RIVET_INTERFACE) "FULLHEADERS"
 		if {[info exists sockinfo(query)]} {
 			set myenv(QUERY_STRING) $sockinfo(query)
 		}
 
 		catch {
-			tcl_puts $sock "HTTP/1.1 200 OK"
-			tcl_puts $sock "Date: [clock format [clock seconds] -format {%a, %d %b %Y %H:%M:%S GMT} -gmt 1]"
-			tcl_puts $sock "Server: Default"
-		}
-
-		catch {
-			tcl_puts stderr "$sock/$addr: call_page [array get myenv]"
+			tcl_puts stderr "($sock/$addr/[pid]) Debug: call_page [array get myenv]"
 		}
 
 		set origstdout [dup stdout]
@@ -773,7 +768,7 @@ proc rivet_cgi_server_request_data {hostport sock addr} {
 		if {[catch {
 			call_page [array get myenv]
 		} err]} {
-			tcl_puts stderr "($sock/$addr) Error: $err"
+			tcl_puts stderr "($sock/$addr/[pid]) Error: $err"
 		}
 
 		dup $origstdout stdout

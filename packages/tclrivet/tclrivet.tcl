@@ -100,6 +100,20 @@ namespace eval rivet {
 proc rivet_flush {} {
 	if {!$::rivet::header_sent} {
 		set ::rivet::header_sent 1
+
+		if {[info exists ::env(RIVET_INTERFACE)]} {
+			if {$::env(RIVET_INTERFACE) == "FULLHEADERS"} {
+				if {[info exists ::rivet::statuscode]} {
+					puts "HTTP/1.1 $::rivet::statuscode [::rivet::statuscode_to_str $::rivet::statuscode]"
+					unset ::rivet::statuscode
+				} else {
+					tcl_puts $sock "HTTP/1.1 200 OK"
+				}
+				tcl_puts $sock "Date: [clock format [clock seconds] -format {%a, %d %b %Y %H:%M:%S GMT} -gmt 1]"
+				tcl_puts $sock "Server: Default"
+			}
+		}
+
 		if {![info exists ::rivet::header_redirect]} {
 			tcl_puts "Content-type: $::rivet::header_type"
 			if {[info exists ::rivet::statuscode]} {
