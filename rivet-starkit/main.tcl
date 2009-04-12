@@ -759,6 +759,29 @@ proc rivet_cgi_server_request_data {hostport sock addr} {
 			set myenv(QUERY_STRING) $sockinfo(query)
 		}
 
+		# Post requests have additional information
+		if {$sockinfo(method) == "POST"} {
+			if {[info exists headers(CONTENT-TYPE)]} {
+				set myenv(CONTENT_TYPE) $headers(CONTENT-TYPE)
+			}
+			if {[info exists headers(CONTENT-LENGTH)]} {
+				set myenv(CONTENT_LENGTH) $headers(CONTENT-LENGTH)
+			}
+		}
+
+		# Additional variables
+		if {[info exists headers(ACCEPT)]} {
+			set myenv(HTTP_ACCEPT) $headers(ACCEPT)
+		}
+		if {[info exists headers(USER-AGENT)]} {
+			set myenv(HTTP_USER_AGENT) $headers(USER-AGENT)
+		}
+
+		# Cookies
+		if {[info exists headers(COOKIE)]} {
+			set myenv(HTTP_COOKIE) $headers(COOKIE)
+		}
+
 		catch {
 			tcl_puts stderr "($sock/$addr/[pid]) Debug: call_page [array get myenv]; headers = [array get headers]"
 		}
