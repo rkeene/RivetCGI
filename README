@@ -62,7 +62,8 @@ II. USAGE
 
 3. Rivet as standalone HTTP server
 	a. Same as #2, except for items "h" and "i";
-	b. Run resultant executable with "--help" for more information
+	b. Run resultant executable or starkit with "--help" for more
+	   information
 
 ************************************************************************
 
