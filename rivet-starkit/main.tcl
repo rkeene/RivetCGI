@@ -695,7 +695,6 @@ proc rivet_cgi_server {addr port foreground initscp logfile errorlogfile} {
 		}
 	}
 
-
 	if {!$foreground} {
 		set mypid [fork]
 		if {$mypid != 0} {
