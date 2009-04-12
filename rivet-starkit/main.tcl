@@ -5,9 +5,7 @@ package require tclrivet
 
 starkit::startup
 
-proc call_page {useenv} {
-	array set env $useenv
-
+proc call_page {} {
 	# Determine if a sub-file has been requested
 	## Sanity check
 	set indexfiles [list index.rvt index.html index.htm __RIVETSTARKIT_INDEX__]
@@ -73,17 +71,17 @@ proc call_page {useenv} {
 		tcl_puts "Content-type: text/html"
 		if {$targetfile == "__RIVETSTARKIT_FORBIDDEN__"} {
 			# Return a 403 (Forbidden)
-			rivet_cgi_server_writehttpheader 403 $useenv
+			rivet_cgi_server_writehttpheader 403
 			tcl_puts ""
 			tcl_puts "<html><head><title>Forbidden</title></head><body><h1>File Access Forbidden</h1></body>"
 		} elseif {[file tail $targetfile] == "__RIVETSTARKIT_INDEX__"} {
 			# Return a 403 (Forbidden)
-			rivet_cgi_server_writehttpheader 403 $useenv
+			rivet_cgi_server_writehttpheader 403
 			tcl_puts ""
 			tcl_puts "<html><head><title>Directory Listing Forbidden</title></head><body><h1>Directory Listing Forbidden</h1></body>"
 		} else {
 			# Return a 404 (File Not Found)
-			rivet_cgi_server_writehttpheader 404 $useenv
+			rivet_cgi_server_writehttpheader 404
 			tcl_puts ""
 			tcl_puts "<html><head><title>File Not Found</title></head><body><h1>File Not Found</h1></body>"
 		}
@@ -94,9 +92,6 @@ proc call_page {useenv} {
 	# Determine what to do with the file based on its filename
 	switch -glob -- [string tolower $targetfile] {
 		"*.rvt" {
-			unset -nocomplain ::env
-			array set ::env $useenv
-
 			cd [file dirname $targetfile]
 	
 			if {[catch {
@@ -615,7 +610,7 @@ proc call_page {useenv} {
 	
 	# Dump static files
 	if {[info exists statictype]} {
-		rivet_cgi_server_writehttpheader 200 $useenv
+		rivet_cgi_server_writehttpheader 200
 		tcl_puts "Content-type: $statictype"
 		catch {
 			tcl_puts "Last-Modified: [clock format [file mtime $targetfile] -format {%a, %d %b %Y %H:%M:%S GMT} -gmt 1]"
@@ -767,8 +762,11 @@ proc rivet_cgi_server_request_data {hostport sock addr} {
 		dup $sock stdout
 		dup $sock stdin
 
+		unset -nocomplain ::env
+		array set ::env [array get myenv]
+
 		if {[catch {
-			call_page [array get myenv]
+			call_page
 		} err]} {
 			tcl_puts stderr "($sock/$addr/[pid]) Error: $err"
 		}
@@ -813,7 +811,7 @@ if {![info exists ::env(GATEWAY_INTERFACE)]} {
 			exit 1
 		}
 		"--cgi" {
-			call_page [array get ::env]
+			call_page
 			exit 0
 		}
 		"--help" {
@@ -830,6 +828,6 @@ if {![info exists ::env(GATEWAY_INTERFACE)]} {
 		}
 	}
 } else {
-	call_page [array get ::env]
+	call_page
 }
 

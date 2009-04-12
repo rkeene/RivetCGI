@@ -459,15 +459,9 @@ proc env {var} {
 	return $::env($var)
 }
  
-proc rivet_cgi_server_writehttpheader {statuscode {useenv ""}} {
-	if {$useenv != ""} {
-		array set env $useenv
-	} else {
-		array set env [array get ::env]
-	}
-
-	if {[info exists env(RIVET_INTERFACE)]} {
-		if {$env(RIVET_INTERFACE) == "FULLHEADERS"} {
+proc rivet_cgi_server_writehttpheader {statuscode} {
+	if {[info exists ::env(RIVET_INTERFACE)]} {
+		if {$::env(RIVET_INTERFACE) == "FULLHEADERS"} {
 			tcl_puts "HTTP/1.1 $statuscode [::rivet::statuscode_to_str $statuscode]"
 			tcl_puts "Date: [clock format [clock seconds] -format {%a, %d %b %Y %H:%M:%S GMT} -gmt 1]"
 			tcl_puts "Server: Default"
