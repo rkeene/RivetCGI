@@ -738,6 +738,11 @@ proc rivet_cgi_server_request {hostport logfd elogfd sock addr port} {
 		flush $elogfd
 	}
 
+	# Reap any dead children
+	catch {
+		wait -nohang
+	}
+
 	# Fork off a child to handle the request
 	set mypid [fork]
 	if {$mypid != 0} {
