@@ -872,6 +872,13 @@ proc rivet_cgi_server_request_data {sock addr hostport logfd elogfd} {
 		if {[info exists headers(COOKIE)]} {
 			set myenv(HTTP_COOKIE) $headers(COOKIE)
 		}
+		## Copy some environment variables directly
+		if {[info exists ::env(SERVER_ADMIN)]} {
+			set myenv(SERVER_ADMIN) $::env(SERVER_ADMIN)
+		}
+		if {[info exists ::env(PATH)]} {
+			set myenv(PATH) $::env(PATH)
+		}
 
 		# Add Rivet Interface specification to fake environment, so further
 		# Rivet/CGI knows how to interface
