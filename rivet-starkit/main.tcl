@@ -658,6 +658,7 @@ proc rivet_cgi_server {addr port foreground init} {
 	}
 
 	if {$init != ""} {
+		tcl_puts stderr "Calling init: $init"
 		uplevel #0 $init
 	}
 
@@ -687,9 +688,18 @@ proc rivet_cgi_server_request {hostport sock addr port} {
 	# Cleanup socket information
 	unset -nocomplain ::rivetstarkit::sockinfo($sock)
 	set ::rivetstarkit::sockinfo($sock) [list state NEW]
+	set ::rivetstarkit::finished($sock) 0
 
 	# Handle connection from data
 	fileevent $sock readable [list rivet_cgi_server_request_data $hostport $sock $addr]
+
+	vwait ::rivetstarkit::finished($sock)
+
+	catch {
+		close $sock
+	}
+
+	exit
 }
 
 proc rivet_cgi_server_request_data {hostport sock addr} {
@@ -721,6 +731,7 @@ proc rivet_cgi_server_request_data {hostport sock addr} {
 
 			# We only support GET and POST, everyone else we just close on.
 			if {$sockinfo(method) != "GET" && $sockinfo(method) != "POST"} {
+				set ::rivetstarkit::finished($sock) 1
 				close $sock
 			}
 		}
@@ -784,9 +795,6 @@ proc rivet_cgi_server_request_data {hostport sock addr} {
 			set myenv(HTTP_COOKIE) $headers(COOKIE)
 		}
 
-		catch {
-			tcl_puts stderr "($sock/$addr/[pid]) Debug: call_page [array get myenv]; headers = [array get headers]"
-		}
 
 		set origstdout [dup stdout]
 		set origstdin [dup stdin]
@@ -798,6 +806,7 @@ proc rivet_cgi_server_request_data {hostport sock addr} {
 		array set ::env [array get myenv]
 
 		if {[catch {
+			tcl_puts stderr "($sock/$addr/[pid]) Debug: [array get ::env] ++ headers = [array get headers] ++ ::rivet::header_sent = $::rivet::header_sent"
 			call_page
 		} err]} {
 			tcl_puts stderr "($sock/$addr/[pid]) Error: $err"
@@ -806,6 +815,9 @@ proc rivet_cgi_server_request_data {hostport sock addr} {
 		dup $origstdout stdout
 		dup $origstdin stdin
 
+		unset sockinfo
+		array set sockinfo {}
+		set ::rivetstarkit::finished($sock) 1
 		catch {
 			close $sock
 		}

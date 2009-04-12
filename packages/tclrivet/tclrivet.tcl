@@ -40,7 +40,7 @@ proc include { filename } {
 
 namespace eval rivet {}
 namespace eval rivet {
-	proc reset {} {
+	proc ::rivet::reset_vars {} {
 		unset -nocomplain ::rivet::header_pairs ::rivet::statuscode ::rivet::header_redirect ::rivet::cache_vars ::rivet::cache_vars_qs ::rivet::cache_vars_post ::rivet::cache_vars_contenttype ::rivet::cache_vars_contenttype_var ::rivet::cache_tmpdir
 
 		array set ::rivet::header_pairs {}
@@ -100,7 +100,7 @@ namespace eval rivet {
 		return $retval
 	}
 
-	::rivet::reset
+	::rivet::reset_vars
 }
 
 proc rivet_flush {} {
