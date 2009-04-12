@@ -760,7 +760,7 @@ proc rivet_cgi_server_request_data {hostport sock addr} {
 		}
 
 		catch {
-			tcl_puts stderr "($sock/$addr/[pid]) Debug: call_page [array get myenv]"
+			tcl_puts stderr "($sock/$addr/[pid]) Debug: call_page [array get myenv]; headers = [array get headers]"
 		}
 
 		set origstdout [dup stdout]
