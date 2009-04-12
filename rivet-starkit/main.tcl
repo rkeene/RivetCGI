@@ -102,9 +102,21 @@ proc call_page {} {
 	switch -glob -- [string tolower $targetfile] {
 		"*.rvt" {
 			cd [file dirname $targetfile]
+
+			set env(SCRIPT_FILENAME) $targetfile
+			if {[info exists env(REQUEST_URI)]} {
+				set scriptfilenamework [lrange [file split $targetfile] 1 end]
+				for {set idx 0} {$idx < [llength $scriptfilenamework]} {incr idx} {
+					set chkpath "/[join [lrange $scriptfilenamework $idx end] {/}]"
+					if {[string match "$chkpath*" $env(REQUEST_URI)]} {
+						set env(SCRIPT_NAME) $chkpath
+						break
+					}
+				}
+			}
 	
 			if {[catch {
-				parse $targetfile	
+				parse $targetfile
 			} err]} {
 				rivet_error
 				rivet_flush
@@ -796,6 +808,7 @@ proc rivet_cgi_server_request_data {sock addr hostport logfd elogfd} {
 			set sockinfo(state) HEADERS
 
 			set sockinfo(url) [join [lrange $work 1 end-1] " "]
+			set sockinfo(url) [regsub {http://[^/]*/} $sockinfo(url) {/}]
 
 			set work [split $sockinfo(url) ?]
 			set sockinfo(path) [lindex $work 0]
@@ -833,11 +846,11 @@ proc rivet_cgi_server_request_data {sock addr hostport logfd elogfd} {
 
 		fileevent $sock readable ""
 
+		set localinfo [fconfigure $sock -sockname]
 		if {![info exists headers(CONNECTION)]} {
 			set headers(CONNECTION) "close"
 		}
 		if {![info exists headers(HOST)]} {
-			set localinfo [fconfigure $sock -sockname]
 			set headers(HOST) [lindex $localinfo 1]
 		}
 
@@ -854,7 +867,7 @@ proc rivet_cgi_server_request_data {sock addr hostport logfd elogfd} {
 		if {[info exists sockinfo(query)]} {
 			set myenv(QUERY_STRING) $sockinfo(query)
 		}
-		## Post requests have additional information
+		### Post requests have additional information
 		if {$sockinfo(method) == "POST"} {
 			if {[info exists headers(CONTENT-TYPE)]} {
 				set myenv(CONTENT_TYPE) $headers(CONTENT-TYPE)
@@ -864,6 +877,9 @@ proc rivet_cgi_server_request_data {sock addr hostport logfd elogfd} {
 			}
 		}
 		## Additional variables
+		set myenv(REQUEST_URI) $sockinfo(url)
+		set myenv(SERVER_ADDR) [lindex $localinfo 0]
+		set myenv(DOCUMENT_ROOT) $::starkit::topdir
 		if {[info exists headers(ACCEPT)]} {
 			set myenv(HTTP_ACCEPT) $headers(ACCEPT)
 		}
@@ -892,10 +908,10 @@ proc rivet_cgi_server_request_data {sock addr hostport logfd elogfd} {
 
 		# Call "call_page" with the new enivronment
 		if {[catch {
-#			if {$logfd != ""} {
-#				tcl_puts $logfd "($sock/$addr/[pid]) Debug: [array get ::env] ++ headers = [array get headers] ++ ::rivet::header_sent = $::rivet::header_sent"
-#				flush $logfd
-#			}
+			if {$elogfd != ""} {
+				tcl_puts $elogfd "($sock/$addr/[pid]) Debug: [array get ::env] ++ headers = [array get headers] ++ ::rivet::header_sent = $::rivet::header_sent"
+				flush $elogfd
+			}
 			call_page
 
 			if {$logfd != ""} {
