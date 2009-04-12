@@ -1,9 +1,9 @@
 #! /usr/bin/env tclsh
 
 package require starkit
-package require tclrivet
-
 starkit::startup
+
+package require tclrivet
 
 proc call_page {} {
 	upvar ::env env
