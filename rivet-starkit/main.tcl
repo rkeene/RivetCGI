@@ -73,17 +73,17 @@ proc call_page {useenv} {
 		tcl_puts "Content-type: text/html"
 		if {$targetfile == "__RIVETSTARKIT_FORBIDDEN__"} {
 			# Return a 403 (Forbidden)
-			rivet_cgi_server_writehttpheader 403
+			rivet_cgi_server_writehttpheader 403 $useenv
 			tcl_puts ""
 			tcl_puts "<html><head><title>Forbidden</title></head><body><h1>File Access Forbidden</h1></body>"
 		} elseif {[file tail $targetfile] == "__RIVETSTARKIT_INDEX__"} {
 			# Return a 403 (Forbidden)
-			rivet_cgi_server_writehttpheader 403
+			rivet_cgi_server_writehttpheader 403 $useenv
 			tcl_puts ""
 			tcl_puts "<html><head><title>Directory Listing Forbidden</title></head><body><h1>Directory Listing Forbidden</h1></body>"
 		} else {
 			# Return a 404 (File Not Found)
-			rivet_cgi_server_writehttpheader 404
+			rivet_cgi_server_writehttpheader 404 $useenv
 			tcl_puts ""
 			tcl_puts "<html><head><title>File Not Found</title></head><body><h1>File Not Found</h1></body>"
 		}
@@ -615,7 +615,7 @@ proc call_page {useenv} {
 	
 	# Dump static files
 	if {[info exists statictype]} {
-		rivet_cgi_server_writehttpheader 200
+		rivet_cgi_server_writehttpheader 200 $useenv
 		tcl_puts "Content-type: $statictype"
 		catch {
 			tcl_puts "Last-Modified: [clock format [file mtime $targetfile] -format {%a, %d %b %Y %H:%M:%S GMT} -gmt 1]"
