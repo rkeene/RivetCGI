@@ -6,6 +6,8 @@ package require tclrivet
 starkit::startup
 
 proc call_page {} {
+	upvar ::env env
+
 	# Determine if a sub-file has been requested
 	## Sanity check
 	set indexfiles [list index.rvt index.html index.htm __RIVETSTARKIT_INDEX__]
