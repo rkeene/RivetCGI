@@ -639,12 +639,15 @@ proc call_page {} {
 }
 
 proc print_help {} {
-	tcl_puts "Usage: [file tail [info nameofexecutable]] {--server \[--address <address>\] \[--port <port>\]"
-	tcl_puts "       \[--foreground {yes|no}\] \[--init <scp>\] \[--logfile {-|<file>}\] \[--errorlog {-|<file>}\]"
-	tcl_puts "       |--cgi|--help|--version}"
+	tcl_puts "Usage: [file tail [info nameofexecutable]] {--server \[--address <address>\]"
+	tcl_puts "       \[--port <port>\] \[--foreground {yes|no}\] \[--init <scp>\]"
+	tcl_puts "       \[--logfile {-|<file>}\] \[--errorlog {-|<file>}\]|--cgi|--help"
+	tcl_puts "       |--version}"
 	tcl_puts "   --server           Run in standalone server mode"
-	tcl_puts "   --address address  Listen on address for HTTP requests (server mode, default is \"ALL\")"
-	tcl_puts "   --port portno      Listen on port for HTTP requests (server mode, default is \"80\")"
+	tcl_puts "   --address address  Listen on address for HTTP requests (server mode, default"
+	tcl_puts "                      is \"ALL\")"
+	tcl_puts "   --port portno      Listen on port for HTTP requests (server mode, default is"
+	tcl_puts "                      \"80\")"
 	tcl_puts "   --foreground fg    Run in foreground (server mode, default is \"no\")"
 	tcl_puts "   --init script      Run script prior to accepting connections (server mode)"
 	tcl_puts "   --logfile file     Log request information to file (or stdout) (server mode)"
