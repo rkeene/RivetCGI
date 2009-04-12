@@ -781,13 +781,8 @@ proc rivet_cgi_server_request_data {hostport sock addr} {
 		dup $origstdout stdout
 		dup $origstdin stdin
 
-		unset sockinfo
-		if {$headers(CONNECTION) == "keep-alive"} {
-			set sockinfo(state) NEW
-		} else {
-			catch {
-				close $sock
-			}
+		catch {
+			close $sock
 		}
 	}
 
