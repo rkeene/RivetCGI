@@ -633,17 +633,18 @@ proc call_page {} {
 
 proc print_help {} {
 	tcl_puts "Usage: [file tail [info nameofexecutable]] {--server \[--address <address>\] \[--port <port>\]"
-	tcl_puts "       \[--foreground {yes|no}\]|--cgi|--help|--version}"
+	tcl_puts "       \[--foreground {yes|no}\] \[--init <scp>\]|--cgi|--help|--version}"
 	tcl_puts "   --server           Run in standalone server mode"
 	tcl_puts "   --address address  Listen on address for HTTP requests (server mode, default is \"ALL\")"
 	tcl_puts "   --port portno      Listen on port for HTTP requests (server mode, default is \"80\")"
 	tcl_puts "   --foreground fg    Run in foreground (server mode, default is \"no\")"
+	tcl_puts "   --init script      Run script prior to accepting connections (server mode)"
 	tcl_puts "   --cgi              Execute as a CGI"
 	tcl_puts "   --help             This help"
 	tcl_puts "   --version          Print version and exit"
 }
 
-proc rivet_cgi_server {addr port foreground} {
+proc rivet_cgi_server {addr port foreground init} {
 	package require Tclx
 
 	set canfork 0
@@ -654,6 +655,10 @@ proc rivet_cgi_server {addr port foreground} {
 	if {!$canfork} {
 		tcl_puts stderr "Error: fork() is not supported on this platform, aborting..."
 		return
+	}
+
+	if {$init != ""} {
+		uplevel #0 $init
 	}
 
 	if {!$foreground} {
@@ -801,13 +806,15 @@ if {![info exists ::env(GATEWAY_INTERFACE)]} {
 			set options(--address) "ALL"
 			set options(--port) 80
 			set options(--foreground) no
+			set options(--init) ""
 			array set options $argv
 
 			set rivet_cgi_server_addr $options(--address)
 			set rivet_cgi_server_port $options(--port)
 			set rivet_cgi_server_fg [expr !!($options(--foreground))]
+			set rivet_cgi_server_init $options(--init)
 
-			rivet_cgi_server $rivet_cgi_server_addr $rivet_cgi_server_port $rivet_cgi_server_fg
+			rivet_cgi_server $rivet_cgi_server_addr $rivet_cgi_server_port $rivet_cgi_server_fg $rivet_cgi_server_init
 
 			# If rivet_cgi_server returns, something went wrong...
 			exit 1
