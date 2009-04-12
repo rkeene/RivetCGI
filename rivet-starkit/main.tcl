@@ -915,7 +915,7 @@ proc rivet_cgi_server_request_data {sock addr hostport logfd elogfd} {
 		# Call "call_page" with the new enivronment
 		if {[catch {
 			if {$elogfd != ""} {
-				tcl_puts $elogfd "($sock/$addr/[pid]) Debug: [array get ::env] ++ headers = [array get headers] ++ ::rivet::header_sent = $::rivet::header_sent"
+				tcl_puts $elogfd "($sock/$addr/[pid]) Debug: [array get ::env] ++ headers = [array get headers]"
 				flush $elogfd
 			}
 			call_page
