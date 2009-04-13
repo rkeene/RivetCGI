@@ -676,16 +676,13 @@ proc print_help {} {
 }
 
 proc rivet_cgi_server {addr port foreground initscp logfile errorlogfile} {
-	package require Tclx
+	catch {
+		package require Tclx
+	}
 
 	set canfork 0
 	catch {
 		set canfork [infox have_waitpid]
-	}
-
-	if {!$canfork} {
-		tcl_puts stderr "Error: fork() is not supported on this platform, aborting..."
-		return
 	}
 
 	if {$initscp != ""} {
@@ -716,60 +713,66 @@ proc rivet_cgi_server {addr port foreground initscp logfile errorlogfile} {
 		}
 	}
 
-	if {!$foreground} {
-		set mypid [fork]
-		if {$mypid != 0} {
-			# Parent
-			wait
-			exit
-		}
-
-		# Child
-		set mypid [fork]
-		if {$mypid != 0} {
-			exit
-		}
-
-		# Grand-child
-		close stdin
-		close stdout
-		close stderr
-		open /dev/null r
-		open /dev/null w
-		open /dev/null w
-		cd /
+	if {$addr == "ALL"} {
+		socket -server [list rivet_cgi_server_request $port $logfd $elogfd $canfork] $port
+	} else {
+		socket -server [list rivet_cgi_server_request $port $logfd $elogfd $canfork] -myaddr $addr $port
 	}
 
-	if {$addr == "ALL"} {
-		socket -server [list rivet_cgi_server_request $port $logfd $elogfd] $port
-	} else {
-		socket -server [list rivet_cgi_server_request $port $logfd $elogfd] -myaddr $addr $port
+	if {!$foreground} {
+		if {$canfork} {
+			set mypid [fork]
+			if {$mypid != 0} {
+				# Parent
+				wait
+				exit
+			}
+
+			# Child
+			set mypid [fork]
+			if {$mypid != 0} {
+				exit
+			}
+
+			# Grand-child
+			close stdin
+			close stdout
+			close stderr
+			open /dev/null r
+			open /dev/null w
+			open /dev/null w
+			cd /
+		} else {
+			tcl_puts stderr "Can't become a daemon, forking unavailable."
+		}
 	}
 
 	vwait __FOREVER__
 }
 
-proc rivet_cgi_server_request {hostport logfd elogfd sock addr port} {
-	# Flush log descriptor, so buffer doesn't contain any extra data.
-	if {$logfd != ""} {
-		flush $logfd
-	}
-	if {$elogfd != ""} {
-		flush $elogfd
-	}
-
-	# Reap any dead children
-	catch {
-		wait -nohang
-	}
-
-	# Fork off a child to handle the request
-	set mypid [fork]
-	if {$mypid != 0} {
-		catch {
-			close $sock
+proc rivet_cgi_server_request {hostport logfd elogfd canfork sock addr port} {
+	if {$canfork} {
+		# Flush log descriptor, so buffer doesn't contain any extra data.
+		if {$logfd != ""} {
+			flush $logfd
 		}
-		return
+		if {$elogfd != ""} {
+			flush $elogfd
+		}
+
+		# Reap any dead children
+		catch {
+			wait -nohang
+		}
+
+		# Fork off a child to handle the request
+		set mypid [fork]
+		if {$mypid != 0} {
+			catch {
+				close $sock
+			}
+			return
+		}
 	}
 
 	# Cleanup socket information
@@ -778,22 +781,22 @@ proc rivet_cgi_server_request {hostport logfd elogfd sock addr port} {
 	set ::rivetstarkit::finished($sock) 0
 
 	# Handle connection from data
-	fileevent $sock readable [list rivet_cgi_server_request_data $sock $addr $hostport $logfd $elogfd]
+	fileevent $sock readable [list rivet_cgi_server_request_data $sock $addr $hostport $logfd $elogfd $canfork]
 
-	vwait ::rivetstarkit::finished($sock)
+	if {$canfork} {
+		vwait ::rivetstarkit::finished($sock)
 
-	catch {
 		close $sock
-	}
 
-	catch {
-		update
-	}
+		catch {
+			update
+		}
 
-	exit
+		exit
+	}
 }
 
-proc rivet_cgi_server_request_data {sock addr hostport logfd elogfd} {
+proc rivet_cgi_server_request_data {sock addr hostport logfd elogfd canfork} {
 	array set sockinfo $::rivetstarkit::sockinfo($sock)
 
 	gets $sock line
@@ -892,6 +895,9 @@ proc rivet_cgi_server_request_data {sock addr hostport logfd elogfd} {
 		if {[info exists headers(USER-AGENT)]} {
 			set myenv(HTTP_USER_AGENT) $headers(USER-AGENT)
 		}
+		if {[info exists headers(REFERER)]} {
+			set myenv(HTTP_REFERER) $headers(REFERER)
+		}
 		## Cookies
 		if {[info exists headers(COOKIE)]} {
 			set myenv(HTTP_COOKIE) $headers(COOKIE)
@@ -909,16 +915,44 @@ proc rivet_cgi_server_request_data {sock addr hostport logfd elogfd} {
 		set myenv(RIVET_INTERFACE) [list FULLHEADERS $sock $sock $elogfd]
 
 		# Swap the environment out
-		unset -nocomplain ::env
-		array set ::env [array get myenv]
+		# Set the global environment variable (may not be entirely safe)
+		if {$canfork} {
+			unset -nocomplain ::env
+			array set ::env [array get myenv]
+		} else {
+			set myinterp [interp create]
+
+			$myinterp eval [list package require tclrivet]
+			$myinterp eval [list unset -nocomplain ::env]
+			$myinterp eval [list array set ::env [array get myenv]]
+			$myinterp eval [list set ::rivet::parsestack [info script]]
+
+			foreach proc [list call_page] {
+				$myinterp eval [list proc $proc [info args $proc] [info body $proc]]
+			}
+
+			foreach var [list ::starkit::topdir] {
+				if {[namespace qualifiers $var] != ""} {
+					$myinterp eval [list namespace eval [namespace qualifiers $var] ""]
+				}
+				$myinterp eval [list set $var [set $var]]
+			}
+
+			interp share {} $sock $myinterp
+		}
 
 		# Call "call_page" with the new enivronment
 		if {[catch {
 			if {$elogfd != ""} {
-				tcl_puts $elogfd "($sock/$addr/[pid]) Debug: [array get ::env] ++ headers = [array get headers]"
+				tcl_puts $elogfd "($sock/$addr/[pid]) Debug: [array get myenv] ++ headers = [array get headers]"
 				flush $elogfd
 			}
-			call_page
+
+			if {$canfork} {
+				call_page
+			} else {
+				$myinterp eval call_page
+			}
 
 			if {$logfd != ""} {
 				tcl_puts $logfd "$addr - - \[[clock format [clock seconds] -format {%d/%b/%Y:%H:%M:%S %z}]\] \"$sockinfo(requestline)\" 200 0 \"-\" \"$ua\""
@@ -939,9 +973,18 @@ proc rivet_cgi_server_request_data {sock addr hostport logfd elogfd} {
 		# Cleanup
 		unset sockinfo
 		array set sockinfo {}
+		if {$canfork} {
+			# Tell the event loop that we're done here.
+			set ::rivetstarkit::finished($sock) 1
+		} else {
+			catch {
+				$myinterp eval update
+			}
+			catch {
+				interp delete $myinterp
+			}
+		}
 
-		# Tell the event loop that we're done here.
-		set ::rivetstarkit::finished($sock) 1
 		catch {
 			close $sock
 		}
