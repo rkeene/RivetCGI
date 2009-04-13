@@ -706,10 +706,23 @@ proc rivet_cgi_server {addr port foreground initscp logfile errorlogfile} {
 			set elogfd stderr
 		}
 		"" {
-			set elogfd [open /dev/null a]
+			set elogfd stderr
+			catch {
+				set elogfd [open /dev/null a]
+			}
 		}
 		default {
 			set elogfd [open $errorlogfile a]
+		}
+	}
+
+	catch {
+		wm withdraw .
+	}
+
+	if {$elogfd == "stderr" || $logfd == "stdout"} {
+		catch {
+			console show
 		}
 	}
 
@@ -942,6 +955,9 @@ proc rivet_cgi_server_request_data {sock addr hostport logfd elogfd canfork} {
 			}
 
 			interp share {} $sock $myinterp
+			if {$elogfd != "" && $elogfd != "stderr"} {
+				interp share {} $elogfd $myinterp
+			}
 		}
 
 		# Call "call_page" with the new enivronment
