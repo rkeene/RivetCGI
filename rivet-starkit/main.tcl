@@ -789,6 +789,9 @@ proc rivet_cgi_server_request {hostport logfd elogfd canfork sock addr port} {
 		close $sock
 
 		catch {
+			update idletasks
+		}
+		catch {
 			update
 		}
 
@@ -978,7 +981,7 @@ proc rivet_cgi_server_request_data {sock addr hostport logfd elogfd canfork} {
 			set ::rivetstarkit::finished($sock) 1
 		} else {
 			catch {
-				$myinterp eval update
+				$myinterp eval [list update idletasks]
 			}
 			catch {
 				interp delete $myinterp
