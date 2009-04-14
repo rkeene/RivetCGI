@@ -802,9 +802,6 @@ proc rivet_cgi_server_request {hostport logfd elogfd canfork sock addr port} {
 		close $sock
 
 		catch {
-			update idletasks
-		}
-		catch {
 			update
 		}
 
