@@ -775,9 +775,13 @@ proc rivet_cgi_server_request {hostport logfd elogfd canfork sock addr port} {
 			flush $elogfd
 		}
 
-		# Reap any dead children
-		catch {
-			wait -nohang
+		# Reap up to 10 children per request
+		for {set i 0} {$i < 10} {incr i} {
+			if {[catch {
+				wait -nohang
+			}]} {
+				break
+			}
 		}
 
 		# Fork off a child to handle the request
@@ -798,13 +802,13 @@ proc rivet_cgi_server_request {hostport logfd elogfd canfork sock addr port} {
 	# Handle connection from data
 	fileevent $sock readable [list rivet_cgi_server_request_data $sock $addr $hostport $logfd $elogfd $canfork]
 
+	vwait ::rivetstarkit::finished($sock)
+
+	catch {
+		close $sock
+	}
+
 	if {$canfork} {
-		vwait ::rivetstarkit::finished($sock)
-
-		catch {
-			close $sock
-		}
-
 		catch {
 			update
 		}
@@ -819,9 +823,9 @@ proc rivet_cgi_server_request_data {sock addr hostport logfd elogfd canfork} {
 	gets $sock line
 
 	if {$line == "" && [eof $sock]} {
-		catch {
-			close $sock
-		}
+		# Tell the event loop that we're done here.
+		set ::rivetstarkit::finished($sock) 1
+
 		return
 	}
 
@@ -993,10 +997,7 @@ proc rivet_cgi_server_request_data {sock addr hostport logfd elogfd canfork} {
 		# Cleanup
 		unset sockinfo
 		array set sockinfo {}
-		if {$canfork} {
-			# Tell the event loop that we're done here.
-			set ::rivetstarkit::finished($sock) 1
-		} else {
+		if {!$canfork} {
 			catch {
 				$myinterp eval [list update idletasks]
 			}
@@ -1005,9 +1006,8 @@ proc rivet_cgi_server_request_data {sock addr hostport logfd elogfd canfork} {
 			}
 		}
 
-		catch {
-			close $sock
-		}
+		# Tell the event loop that we're done here.
+		set ::rivetstarkit::finished($sock) 1
 	}
  
 	set ::rivetstarkit::sockinfo($sock) [array get sockinfo]
