@@ -651,7 +651,9 @@ proc call_page {} {
 		set fd [open $targetfile r]
 		fconfigure $fd -encoding binary -translation {binary binary}
 		fconfigure $outchan -encoding binary -translation {binary binary}
-		fcopy $fd $outchan
+		catch {
+			fcopy $fd $outchan
+		}
 		close $fd
 	}
 }
@@ -799,7 +801,9 @@ proc rivet_cgi_server_request {hostport logfd elogfd canfork sock addr port} {
 	if {$canfork} {
 		vwait ::rivetstarkit::finished($sock)
 
-		close $sock
+		catch {
+			close $sock
+		}
 
 		catch {
 			update
