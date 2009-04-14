@@ -195,6 +195,11 @@ proc rivet_error {} {
 }
 
 proc rivet_puts args {
+	set outchan stdout
+	if {[info exists ::env(RIVET_INTERFACE)]} {
+		set outchan [lindex $::env(RIVET_INTERFACE) 2]
+	}
+
 	if {[lindex $args 0] == "-nonewline"} {
 		set appendchar ""
 		set args [lrange $args 1 end]
@@ -218,7 +223,7 @@ proc rivet_puts args {
 	} else {
 		if {$fd == "stdout"} {
 			if {!$::rivet::send_no_content} {
-				tcl_puts -nonewline $fd [lindex $args 0]$appendchar
+				tcl_puts -nonewline $outchan [lindex $args 0]$appendchar
 			}
 		} else {
 			tcl_puts -nonewline $fd [lindex $args 0]$appendchar
