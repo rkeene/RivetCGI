@@ -158,7 +158,10 @@ proc call_page {{useenv ""} {createinterp 0}} {
 					$myinterp eval [list parse $targetfile]
 				} err]} {
 					$myinterp eval [list rivet_error]
+
 					$myinterp eval [list rivet_flush]
+
+					$myinterp eval [list update idletasks]
 
 					interp delete $myinterp
 					return
@@ -180,12 +183,18 @@ proc call_page {{useenv ""} {createinterp 0}} {
 					parse $targetfile
 				} err]} {
 					rivet_error
+
 					rivet_flush
+
+					update idletasks
+
 					return
 				}
 
 				# Flush the output stream
 				rivet_flush
+
+				update idletasks
 			}
 	
 			return
