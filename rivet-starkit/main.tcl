@@ -5,13 +5,21 @@ starkit::startup
 
 package require tclrivet
 
-proc call_page {} {
-	upvar ::env env
-	set outchan stdout
-	if {[info exists env(RIVET_INTERFACE)]} {
-		set outchan [lindex $env(RIVET_INTERFACE) 2]
+proc call_page {{useenv ""} {createinterp 0}} {
+	if {$useenv eq ""} {
+		upvar ::env env
+	} else {
+		array set env $useenv
 	}
 
+	set inchan stdout
+	set outchan stdout
+	set elogchan ""
+	if {[info exists env(RIVET_INTERFACE)]} {
+		set inchan [lindex $env(RIVET_INTERFACE) 1]
+		set outchan [lindex $env(RIVET_INTERFACE) 2]
+		set elogchan [lindex $env(RIVET_INTERFACE) 3]
+	}
 
 	# Determine if a sub-file has been requested
 	## Sanity check
@@ -77,19 +85,19 @@ proc call_page {} {
 	if {![file exists $targetfile]} {
 		if {$targetfile == "__RIVETSTARKIT_FORBIDDEN__"} {
 			# Return a 403 (Forbidden)
-			rivet_cgi_server_writehttpheader 403
+			rivet_cgi_server_writehttpheader 403 [array get env]
 			tcl_puts $outchan "Content-type: text/html"
 			tcl_puts $outchan ""
 			tcl_puts $outchan "<html><head><title>Forbidden</title></head><body><h1>File Access Forbidden</h1></body>"
 		} elseif {[file tail $targetfile] == "__RIVETSTARKIT_INDEX__"} {
 			# Return a 403 (Forbidden)
-			rivet_cgi_server_writehttpheader 403
+			rivet_cgi_server_writehttpheader 403 [array get env]
 			tcl_puts $outchan "Content-type: text/html"
 			tcl_puts $outchan ""
 			tcl_puts $outchan "<html><head><title>Directory Listing Forbidden</title></head><body><h1>Directory Listing Forbidden</h1></body>"
 		} else {
 			# Return a 404 (File Not Found)
-			rivet_cgi_server_writehttpheader 404
+			rivet_cgi_server_writehttpheader 404 [array get env]
 			tcl_puts $outchan "Content-type: text/html"
 			tcl_puts $outchan ""
 			tcl_puts $outchan "<html><head><title>File Not Found</title></head><body><h1>File Not Found</h1></body>"
@@ -121,16 +129,65 @@ proc call_page {} {
 				}
 			}
 	
-			if {[catch {
-				parse $targetfile
-			} err]} {
-				rivet_error
+			if {$createinterp} {
+				set myinterp [interp create]
+
+				$myinterp eval [list package require tclrivet]
+				$myinterp eval [list unset -nocomplain ::env]
+				$myinterp eval [list array set ::env [array get env]]
+				$myinterp eval [list set ::rivet::parsestack [info script]]
+
+				foreach var [list ::starkit::topdir] {
+					if {[namespace qualifiers $var] != ""} {
+						$myinterp eval [list namespace eval [namespace qualifiers $var] ""]
+					}
+					$myinterp eval [list set $var [set $var]]
+				}
+
+				if {$inchan != "stdin"} {
+					interp share {} $inchan $myinterp
+				}
+				if {$outchan != "stdout"} {
+					interp share {} $outchan $myinterp
+				}
+				if {$elogchan != "" && $elogchan != "stderr"} {
+					interp share {} $elogchan $myinterp
+				}
+
+				if {[catch {
+					$myinterp eval [list parse $targetfile]
+				} err]} {
+					$myinterp eval [list rivet_error]
+					$myinterp eval [list rivet_flush]
+
+					interp delete $myinterp
+					return
+				}
+
+				# Flush the output stream
+				$myinterp eval [list rivet_flush]
+
+				$myinterp eval [list update idletasks]
+
+				interp delete $myinterp
+			} else {
+				if {$useenv ne ""} {
+					unset -nocomplain ::env
+					array set ::env [array get env] 
+				}
+
+				if {[catch {
+					parse $targetfile
+				} err]} {
+					rivet_error
+					rivet_flush
+					return
+				}
+
+				# Flush the output stream
 				rivet_flush
-				return
 			}
 	
-			# Flush the output stream
-			rivet_flush
 			return
 		}
 		"*.ez" { set statictype "application/andrew-inset" }
@@ -637,7 +694,7 @@ proc call_page {} {
 	
 	# Dump static files
 	if {[info exists statictype]} {
-		rivet_cgi_server_writehttpheader 200
+		rivet_cgi_server_writehttpheader 200 [array get env]
 		tcl_puts $outchan "Content-type: $statictype"
 		catch {
 			tcl_puts $outchan "Last-Modified: [clock format [file mtime $targetfile] -format {%a, %d %b %Y %H:%M:%S GMT} -gmt 1]"
@@ -935,36 +992,6 @@ proc rivet_cgi_server_request_data {sock addr hostport logfd elogfd canfork} {
 		# Rivet/CGI knows how to interface
 		set myenv(RIVET_INTERFACE) [list FULLHEADERS $sock $sock $elogfd]
 
-		# Swap the environment out
-		# Set the global environment variable (may not be entirely safe)
-		if {$canfork} {
-			unset -nocomplain ::env
-			array set ::env [array get myenv]
-		} else {
-			set myinterp [interp create]
-
-			$myinterp eval [list package require tclrivet]
-			$myinterp eval [list unset -nocomplain ::env]
-			$myinterp eval [list array set ::env [array get myenv]]
-			$myinterp eval [list set ::rivet::parsestack [info script]]
-
-			foreach proc [list call_page] {
-				$myinterp eval [list proc $proc [info args $proc] [info body $proc]]
-			}
-
-			foreach var [list ::starkit::topdir] {
-				if {[namespace qualifiers $var] != ""} {
-					$myinterp eval [list namespace eval [namespace qualifiers $var] ""]
-				}
-				$myinterp eval [list set $var [set $var]]
-			}
-
-			interp share {} $sock $myinterp
-			if {$elogfd != "" && $elogfd != "stderr"} {
-				interp share {} $elogfd $myinterp
-			}
-		}
-
 		# Call "call_page" with the new enivronment
 		if {[catch {
 			if {$elogfd != ""} {
@@ -973,9 +1000,9 @@ proc rivet_cgi_server_request_data {sock addr hostport logfd elogfd canfork} {
 			}
 
 			if {$canfork} {
-				call_page
+				call_page [array get myenv] 0
 			} else {
-				$myinterp eval call_page
+				call_page [array get myenv] 1
 			}
 
 			if {$logfd != ""} {
@@ -997,14 +1024,6 @@ proc rivet_cgi_server_request_data {sock addr hostport logfd elogfd canfork} {
 		# Cleanup
 		unset sockinfo
 		array set sockinfo {}
-		if {!$canfork} {
-			catch {
-				$myinterp eval [list update idletasks]
-			}
-			catch {
-				interp delete $myinterp
-			}
-		}
 
 		# Tell the event loop that we're done here.
 		set ::rivetstarkit::finished($sock) 1

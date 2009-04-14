@@ -495,12 +495,18 @@ proc env {var} {
 	return $::env($var)
 }
  
-proc rivet_cgi_server_writehttpheader {statuscode} {
+proc rivet_cgi_server_writehttpheader {statuscode {useenv ""}} {
+	if {$useenv eq ""} {
+		upvar ::env env
+	} else {
+		array set env $useenv
+	}
+
 	set outchan stdout
 
-	if {[info exists ::env(RIVET_INTERFACE)]} {
-		set outchan [lindex $::env(RIVET_INTERFACE) 2]
-		if {[lindex $::env(RIVET_INTERFACE) 0] == "FULLHEADERS"} {
+	if {[info exists env(RIVET_INTERFACE)]} {
+		set outchan [lindex $env(RIVET_INTERFACE) 2]
+		if {[lindex $env(RIVET_INTERFACE) 0] == "FULLHEADERS"} {
 			tcl_puts $outchan "HTTP/1.1 $statuscode [::rivet::statuscode_to_str $statuscode]"
 			tcl_puts $outchan "Date: [clock format [clock seconds] -format {%a, %d %b %Y %H:%M:%S GMT} -gmt 1]"
 			tcl_puts $outchan "Server: Default"
