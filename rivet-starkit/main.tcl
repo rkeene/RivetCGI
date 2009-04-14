@@ -161,16 +161,12 @@ proc call_page {{useenv ""} {createinterp 0}} {
 
 					$myinterp eval [list rivet_flush]
 
-					$myinterp eval [list update idletasks]
-
 					interp delete $myinterp
 					return
 				}
 
 				# Flush the output stream
 				$myinterp eval [list rivet_flush]
-
-				$myinterp eval [list update idletasks]
 
 				interp delete $myinterp
 			} else {
@@ -186,15 +182,11 @@ proc call_page {{useenv ""} {createinterp 0}} {
 
 					rivet_flush
 
-					update idletasks
-
 					return
 				}
 
 				# Flush the output stream
 				rivet_flush
-
-				update idletasks
 			}
 	
 			return
@@ -875,10 +867,6 @@ proc rivet_cgi_server_request {hostport logfd elogfd canfork sock addr port} {
 	}
 
 	if {$canfork} {
-		catch {
-			update
-		}
-
 		exit
 	}
 }
