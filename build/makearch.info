@@ -36,4 +36,4 @@ BEFORE=""
 AFTER=""
 
 # Files matching these (space-seperated) patterns are deleted
-TMPS="*.out HEADER"
+TMPS="*.out HEADER build"
