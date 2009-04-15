@@ -45,7 +45,7 @@ TMPVFSDIR="${TMPRIVETDIR}/rivet.vfs"
 rm -rf "${TMPVFSDIR}"
 
 # Copy each source directory into the VFS area
-shift
+shift; shift
 for srcdir in $*; do
 	if echo "${srcdir}" | grep ':' >/dev/null; then
 		dstdir=$(echo "${srcdir}" | cut -f 2 -d ':')

@@ -712,8 +712,11 @@ proc call_page {{useenv ""} {createinterp 0}} {
 		fconfigure $fd -encoding binary -translation {binary binary}
 		fconfigure $outchan -encoding binary -translation {binary binary}
 		catch {
-			fcopy $fd $outchan
+			fcopy $fd $outchan -command [list set ::rivetstarkit::fcopy([list $fd $outchan $targetfile])]
 		}
+
+		vwait ::rivetstarkit::fcopy([list $fd $outchan $targetfile])
+
 		close $fd
 	}
 }
