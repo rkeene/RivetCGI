@@ -31,7 +31,7 @@ else
 fi
 OURDIR="$(dirname "${OURSCP}")"
 
-SDXKIT="$(readlink -f "${OURDIR}/../../rivet-starkit/sdx.kit")"
+SDXKIT="$(readlink -f "${OURDIR}/../rivet-starkit/sdx.kit")"
 
 if [ -z "${TCLPACK}" -o -z "${OUTPUT}" -o -z "$3" ]; then
 	echo 'Usage: rivet2starkit <tclkit> <outputkit> <dirname:destdir> ...' >&2
