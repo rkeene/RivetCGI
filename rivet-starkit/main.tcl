@@ -5,6 +5,8 @@ starkit::startup
 
 package require tclrivet
 
+namespace eval ::rivetstarkit { }
+
 proc call_page {{useenv ""} {createinterp 0}} {
 	if {$useenv eq ""} {
 		upvar ::env env
@@ -787,9 +789,9 @@ proc rivet_cgi_server {addr port foreground initscp logfile errorlogfile} {
 	}
 
 	if {$addr == "ALL"} {
-		socket -server [list rivet_cgi_server_request $port $logfd $elogfd $canfork] $port
+		set ::rivetstarkit::masterfd [socket -server [list rivet_cgi_server_request $port $logfd $elogfd $canfork] $port]
 	} else {
-		socket -server [list rivet_cgi_server_request $port $logfd $elogfd $canfork] -myaddr $addr $port
+		set ::rivetstarkit::masterfd [socket -server [list rivet_cgi_server_request $port $logfd $elogfd $canfork] -myaddr $addr $port]
 	}
 
 	if {!$foreground} {
@@ -849,6 +851,10 @@ proc rivet_cgi_server_request {hostport logfd elogfd canfork sock addr port} {
 				close $sock
 			}
 			return
+		}
+
+		catch {
+			close $::rivetstarkit::masterfd
 		}
 	}
 
@@ -1029,7 +1035,6 @@ proc rivet_cgi_server_request_data {sock addr hostport logfd elogfd canfork} {
 	set ::rivetstarkit::sockinfo($sock) [array get sockinfo]
 }
 
-namespace eval ::rivetstarkit { }
 
 # Determine if we are being called as a CGI, or from the command line
 if {![info exists ::env(GATEWAY_INTERFACE)]} {
