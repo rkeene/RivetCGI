@@ -749,6 +749,9 @@ proc rivet_cgi_server {addr port foreground initscp logfile errorlogfile} {
 	catch {
 		set canfork [infox have_waitpid]
 	}
+	if {$::tcl_platform(platform) == "windows"} {
+		set canfork 0
+	}
 
 	if {$initscp != ""} {
 		uplevel #0 $initscp
