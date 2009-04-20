@@ -137,7 +137,7 @@ proc rivet::parse { data outbufvar } {
 		}
 	    } else {
 		if { $p > 0 } {
-		    append outbuf [string range $endtag 0 $p]
+		    append outbuf [string range $endtag 0 [expr $p - 1]]
 		    set p 0
 		}
 		append outbuf $cur
