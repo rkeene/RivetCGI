@@ -55,7 +55,7 @@ proc call_page {{useenv ""} {createinterp 0}} {
 	
 	# Check the path to ensure that is inside the starkit
 	set targetfile [file normalize $targetfile]
-	set srcdir [file dirname [file normalize [info script]]]
+	set srcdir $::starkit::topdir
 	if {![string match "$srcdir/*" $targetfile]} {
 		set targetfile "__RIVETSTARKIT_FORBIDDEN__"
 	}
@@ -177,6 +177,8 @@ proc call_page {{useenv ""} {createinterp 0}} {
 					array set ::env [array get env] 
 				}
 
+				::rivet::reset
+ 
 				if {[catch {
 					parse $targetfile
 				} err]} {
@@ -745,6 +747,7 @@ proc rivet_cgi_server {addr port foreground initscp logfile errorlogfile} {
 		package require Tclx
 	}
 
+	set process_model "flat"
 	set canfork 0
 	catch {
 		set canfork [infox have_waitpid]
@@ -752,6 +755,15 @@ proc rivet_cgi_server {addr port foreground initscp logfile errorlogfile} {
 	if {$::tcl_platform(platform) == "windows"} {
 		set canfork 0
 	}
+	if {$canfork} {
+		set process_model "fork"
+	} else {
+		catch {
+			package require Thread
+			set process_model "thread"
+		}
+	}
+	unset canfork
 
 	if {$initscp != ""} {
 		uplevel #0 $initscp
@@ -795,13 +807,13 @@ proc rivet_cgi_server {addr port foreground initscp logfile errorlogfile} {
 	}
 
 	if {$addr == "ALL"} {
-		set ::rivetstarkit::masterfd [socket -server [list rivet_cgi_server_request $port $logfd $elogfd $canfork] $port]
+		set ::rivetstarkit::masterfd [socket -server [list rivet_cgi_server_request $port $logfd $elogfd $process_model] $port]
 	} else {
-		set ::rivetstarkit::masterfd [socket -server [list rivet_cgi_server_request $port $logfd $elogfd $canfork] -myaddr $addr $port]
+		set ::rivetstarkit::masterfd [socket -server [list rivet_cgi_server_request $port $logfd $elogfd $process_model] -myaddr $addr $port]
 	}
 
 	if {!$foreground} {
-		if {$canfork} {
+		if {$process_model == "fork"} {
 			set mypid [fork]
 			if {$mypid != 0} {
 				# Parent
@@ -831,59 +843,165 @@ proc rivet_cgi_server {addr port foreground initscp logfile errorlogfile} {
 	vwait __FOREVER__
 }
 
-proc rivet_cgi_server_request {hostport logfd elogfd canfork sock addr port} {
-	if {$canfork} {
-		# Flush log descriptor, so buffer doesn't contain any extra data.
-		if {$logfd != ""} {
-			flush $logfd
-		}
-		if {$elogfd != ""} {
-			flush $elogfd
-		}
-
-		# Reap up to 10 children per request
-		for {set i 0} {$i < 10} {incr i} {
-			if {[catch {
-				wait -nohang
-			}]} {
-				break
+proc rivet_cgi_server_request {hostport logfd elogfd pmodel sock addr port {threadId ""}} {
+	switch -- $pmodel {
+		"fork" {
+			# Flush log descriptor, so buffer doesn't contain any extra data.
+			if {$logfd != ""} {
+				flush $logfd
 			}
-		}
+			if {$elogfd != ""} {
+				flush $elogfd
+			}
 
-		# Fork off a child to handle the request
-		set mypid [fork]
-		if {$mypid != 0} {
+			# Reap up to 10 children per request
+			for {set i 0} {$i < 10} {incr i} {
+				if {[catch {
+					wait -nohang
+				}]} {
+					break
+				}
+			}
+
+			# Fork off a child to handle the request
+			set mypid [fork]
+			if {$mypid != 0} {
+				catch {
+					close $sock
+				}
+				return
+			}
+
 			catch {
-				close $sock
+				close $::rivetstarkit::masterfd
 			}
+		}
+		"thread" {
+			# Find a free thread...
+			if {![info exists ::rivetstarkit::threadinfo]} {
+				array set ::rivetstarkit::threadinfo {}
+			}
+
+			unset -nocomplain threadId
+			foreach {thread isInUse} [array get ::rivetstarkit::threadinfo] {
+				if {!$isInUse} {
+					tcl_puts $elogfd "Using existing thread: $thread"
+
+					set threadId $thread
+					break
+				}
+			}
+
+			# If none found, create one...
+			if {![info exists threadId]} {
+				# Create an empty interpreter in a new thread
+				set threadId [thread::create]
+				tcl_puts $elogfd "Creating thread: $threadId"
+
+				# Load the needed packages in the new thread
+				thread::send $threadId [list package require tclrivet]
+				thread::send $threadId [list set ::rivet::parsestack [info script]]
+
+				# Copy the appropriate namespaces to the new thread
+				foreach ns [list ::rivetstarkit] {
+					thread::send $threadId [list namespace eval $ns ""]
+				}
+
+				# Copy the appropriate variables to the new thread
+				foreach var [list ::starkit::topdir] {
+					if {[namespace qualifiers $var] != ""} {
+						thread::send $threadId [list namespace eval [namespace qualifiers $var] ""]
+					}
+
+					thread::send $threadId [list set $var [set $var]]
+				}
+
+				# Copy the appropriate procedures to the new thread
+				foreach proc [list rivet_cgi_server_request_data rivet_cgi_server_request call_page] {
+					if {[namespace qualifiers $var] != ""} {
+						thread::send $threadId [list namespace eval [namespace qualifiers $var] ""]
+					}
+
+					set procargs [list]
+					foreach arg [info args $proc] {
+						if {[info default $proc $arg defval]} {
+							lappend procargs [list $arg $defval]
+						} else {
+							lappend procargs $arg
+						}
+					}
+
+					thread::send $threadId [list proc $proc $procargs [info body $proc]]
+				}
+
+				tcl_puts $elogfd " ... done creating thread ($threadId)"
+			}
+
+			# Mark the specified thread as in-use
+			set ::rivetstarkit::threadinfo($threadId) 1
+
+			# Perform the bottom-half of the processing (we are required to re-enter the event loop)
+			after idle [list rivet_cgi_server_request $hostport $logfd $elogfd "thread-parent" $sock $addr $port $threadId]
+
 			return
 		}
+		"thread-parent" {
+			set pmodel "thread"
 
-		catch {
-			close $::rivetstarkit::masterfd
+			# Transfer the socket to the thread, and specify our thread Id
+			thread::transfer $threadId $sock
+
+			tcl_puts $elogfd "Calling child thread to handle request ($threadId) in background"
+			thread::send -async $threadId [list rivet_cgi_server_request $hostport "" "" "thread-child" $sock $addr $port [thread::id]]
+			tcl_puts $elogfd " ... done ($threadId)."
+			return
+		}
+		"thread-child" {
+			set pmodel "thread"
+
+			set parentThreadId $threadId
+			unset threadId
+		}
+		"flat" {
 		}
 	}
 
-	# Cleanup socket information
-	unset -nocomplain ::rivetstarkit::sockinfo($sock)
-	set ::rivetstarkit::sockinfo($sock) [list state NEW]
-	set ::rivetstarkit::finished($sock) 0
-
-	# Handle connection from data
-	fileevent $sock readable [list rivet_cgi_server_request_data $sock $addr $hostport $logfd $elogfd $canfork]
-
-	vwait ::rivetstarkit::finished($sock)
-
 	catch {
-		close $sock
+		# Cleanup socket information
+		unset -nocomplain ::rivetstarkit::sockinfo($sock)
+		set ::rivetstarkit::sockinfo($sock) [list state NEW]
+		set ::rivetstarkit::finished($sock) 0
+
+		# Handle connection from data
+		fileevent $sock readable [list rivet_cgi_server_request_data $sock $addr $hostport $logfd $elogfd $pmodel]
+
+		vwait ::rivetstarkit::finished($sock)
+
+		catch {
+			close $sock
+		}
 	}
 
-	if {$canfork} {
-		exit
+	switch -- $pmodel {
+		"fork" {
+			exit
+		}
+		"thread" {
+			# Mark the thread as free
+			if {$elogfd != ""} {
+				tcl_puts $elogfd "Marking thread as free ([thread::id])"
+			}
+
+			thread::send -async $parentThreadId [list set ::rivetstarkit::threadinfo([thread::id]) 0]
+
+			if {$elogfd != ""} {
+				tcl_puts $elogfd " ... done ([thread::id])."
+			}
+		}
 	}
 }
 
-proc rivet_cgi_server_request_data {sock addr hostport logfd elogfd canfork} {
+proc rivet_cgi_server_request_data {sock addr hostport logfd elogfd pmodel} {
 	array set sockinfo $::rivetstarkit::sockinfo($sock)
 
 	gets $sock line
@@ -1008,10 +1126,10 @@ proc rivet_cgi_server_request_data {sock addr hostport logfd elogfd canfork} {
 				flush $elogfd
 			}
 
-			if {$canfork} {
-				call_page [array get myenv] 0
-			} else {
+			if {$pmodel == "flat"} {
 				call_page [array get myenv] 1
+			} else {
+				call_page [array get myenv] 0
 			}
 
 			if {$logfd != ""} {
