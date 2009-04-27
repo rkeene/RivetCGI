@@ -40,7 +40,7 @@ proc include { filename } {
 
 namespace eval rivet {}
 namespace eval rivet {
-	proc ::rivet::reset_vars {} {
+	proc ::rivet::reset {} {
 		unset -nocomplain ::rivet::header_pairs ::rivet::statuscode ::rivet::header_redirect ::rivet::cache_vars ::rivet::cache_vars_qs ::rivet::cache_vars_post ::rivet::cache_vars_contenttype ::rivet::cache_vars_contenttype_var ::rivet::cache_tmpdir
 
 		array set ::rivet::header_pairs {}
@@ -48,6 +48,18 @@ namespace eval rivet {
 		set ::rivet::header_sent 0
 		set ::rivet::output_buffer ""
 		set ::rivet::send_no_content 0
+
+		catch {
+			namespace delete ::request
+		}
+
+		namespace eval ::request {}
+
+		proc ::request::global args {
+			foreach var $args {
+				namespace eval request "upvar #0 ::request::$var $var"
+			}
+		}
 	}
 
 	proc statuscode_to_str {sc} {
@@ -100,7 +112,7 @@ namespace eval rivet {
 		return $retval
 	}
 
-	::rivet::reset_vars
+	::rivet::reset
 }
 
 proc rivet_flush {} {
@@ -519,16 +531,6 @@ proc rivet_cgi_server_writehttpheader {statuscode {useenv ""}} {
 }
 
 proc load_headers args { }
-
-# Maybe this should go somewhere else ?
-namespace eval request {
-	proc global args {
-		foreach var $args {
-			namespace eval request "upvar #0 ::request::$var $var"
-		}
-	}
-}
-
 
 # We need to fill these in, of course.
 
