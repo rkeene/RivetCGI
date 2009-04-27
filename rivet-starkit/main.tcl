@@ -726,8 +726,8 @@ proc call_page {{useenv ""} {createinterp 0}} {
 proc print_help {} {
 	tcl_puts "Usage: [file tail [info nameofexecutable]] {--server \[--address <address>\]"
 	tcl_puts "       \[--port <port>\] \[--foreground {yes|no}\] \[--init <scp>\]"
-	tcl_puts "       \[--logfile {-|<file>}\] \[--errorlog {-|<file>}\]|--cgi|--help"
-	tcl_puts "       |--version}"
+	tcl_puts "       \[--logfile {-|<file>}\] \[--errorlog {-|<file>}\] \[--maxthreads <num>\]"
+	tcl_puts "       |--cgi|--help|--version}"
 	tcl_puts "   --server           Run in standalone server mode"
 	tcl_puts "   --address address  Listen on address for HTTP requests (server mode, default"
 	tcl_puts "                      is \"ALL\")"
@@ -737,12 +737,13 @@ proc print_help {} {
 	tcl_puts "   --init script      Run script prior to accepting connections (server mode)"
 	tcl_puts "   --logfile file     Log request information to file (or stdout) (server mode)"
 	tcl_puts "   --errorlog file    Log error information to file (or stderr) (server mode)"
+	tcl_puts "   --maxthreads num  Maximum number of threads to allow to exist (server mode)"
 	tcl_puts "   --cgi              Execute as a CGI"
 	tcl_puts "   --help             This help"
 	tcl_puts "   --version          Print version and exit"
 }
 
-proc rivet_cgi_server {addr port foreground initscp logfile errorlogfile} {
+proc rivet_cgi_server {addr port foreground initscp logfile errorlogfile maxthreads} {
 	catch {
 		package require Tclx
 	}
@@ -755,6 +756,7 @@ proc rivet_cgi_server {addr port foreground initscp logfile errorlogfile} {
 	if {$::tcl_platform(platform) == "windows"} {
 		set canfork 0
 	}
+
 	if {$canfork} {
 		set process_model "fork"
 	} else {
@@ -807,9 +809,9 @@ proc rivet_cgi_server {addr port foreground initscp logfile errorlogfile} {
 	}
 
 	if {$addr == "ALL"} {
-		set ::rivetstarkit::masterfd [socket -server [list rivet_cgi_server_request $port $logfd $elogfd $process_model] $port]
+		set ::rivetstarkit::masterfd [socket -server [list rivet_cgi_server_request $port $logfd $elogfd $process_model $maxthreads] $port]
 	} else {
-		set ::rivetstarkit::masterfd [socket -server [list rivet_cgi_server_request $port $logfd $elogfd $process_model] -myaddr $addr $port]
+		set ::rivetstarkit::masterfd [socket -server [list rivet_cgi_server_request $port $logfd $elogfd $process_model $maxthreads] -myaddr $addr $port]
 	}
 
 	if {!$foreground} {
@@ -843,7 +845,7 @@ proc rivet_cgi_server {addr port foreground initscp logfile errorlogfile} {
 	vwait __FOREVER__
 }
 
-proc rivet_cgi_server_request {hostport logfd elogfd pmodel sock addr port {threadId ""}} {
+proc rivet_cgi_server_request {hostport logfd elogfd pmodel maxthreads sock addr port {threadId ""}} {
 	switch -- $pmodel {
 		"fork" {
 			# Flush log descriptor, so buffer doesn't contain any extra data.
@@ -889,6 +891,17 @@ proc rivet_cgi_server_request {hostport logfd elogfd pmodel sock addr port {thre
 
 					set threadId $thread
 					break
+				}
+			}
+
+			# If none found, make sure we haven't exceeded the maximum number of threads
+			if {![info exists threadId]} {
+				set numthreads [llength [thread::names]]
+				if {$numthreads > $maxthreads} {
+					tcl_puts $elogfd "Exceeded maximum number of threads ($maxthreads): $numthreads, closing socket!"
+
+					close $sock
+					return
 				}
 			}
 
@@ -941,7 +954,7 @@ proc rivet_cgi_server_request {hostport logfd elogfd pmodel sock addr port {thre
 			set ::rivetstarkit::threadinfo($threadId) 1
 
 			# Perform the bottom-half of the processing (we are required to re-enter the event loop)
-			after idle [list rivet_cgi_server_request $hostport $logfd $elogfd "thread-parent" $sock $addr $port $threadId]
+			after idle [list rivet_cgi_server_request $hostport $logfd $elogfd "thread-parent" 0 $sock $addr $port $threadId]
 
 			return
 		}
@@ -952,7 +965,7 @@ proc rivet_cgi_server_request {hostport logfd elogfd pmodel sock addr port {thre
 			thread::transfer $threadId $sock
 
 			tcl_puts $elogfd "Calling child thread to handle request ($threadId) in background"
-			thread::send -async $threadId [list rivet_cgi_server_request $hostport "" "" "thread-child" $sock $addr $port [thread::id]]
+			thread::send -async $threadId [list rivet_cgi_server_request $hostport "" "" "thread-child" 0 $sock $addr $port [thread::id]]
 			tcl_puts $elogfd " ... done ($threadId)."
 			return
 		}
@@ -1173,6 +1186,7 @@ if {![info exists ::env(GATEWAY_INTERFACE)]} {
 			set options(--init) ""
 			set options(--logfile) ""
 			set options(--errorlog) ""
+			set options(--maxthreads) 16
 			array set options $argv
 
 			set rivet_cgi_server_addr $options(--address)
@@ -1181,8 +1195,9 @@ if {![info exists ::env(GATEWAY_INTERFACE)]} {
 			set rivet_cgi_server_init $options(--init)
 			set rivet_cgi_server_logfile $options(--logfile)
 			set rivet_cgi_server_errorlogfile $options(--errorlog)
+			set rivet_cgi_server_maxthreads $options(--maxthreads)
 
-			rivet_cgi_server $rivet_cgi_server_addr $rivet_cgi_server_port $rivet_cgi_server_fg $rivet_cgi_server_init $rivet_cgi_server_logfile $rivet_cgi_server_errorlogfile
+			rivet_cgi_server $rivet_cgi_server_addr $rivet_cgi_server_port $rivet_cgi_server_fg $rivet_cgi_server_init $rivet_cgi_server_logfile $rivet_cgi_server_errorlogfile $rivet_cgi_server_maxthreads
 
 			# If rivet_cgi_server returns, something went wrong...
 			exit 1
