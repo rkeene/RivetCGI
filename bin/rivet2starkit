@@ -78,10 +78,10 @@ echo "Deny from all" > "${TMPVFSDIR}/lib/.htaccess"
 echo "Deny from all" > "${TMPVFSDIR}/rivet-tcl/.htaccess"
 
 # Wrap VFS dir into kit
-echo "${TCLPACK}" "${SDXKIT}" wrap "${TMPRIVETDIR}/rivet.kit"
+echo "${TCLPACK}" "${SDXKIT}" wrap "${TMPRIVETDIR}/rivet.kit" -nocompress
 (
 	cd "${TMPRIVETDIR}"
-	"${TCLPACK}" "${SDXKIT}" wrap rivet.kit
+	"${TCLPACK}" "${SDXKIT}" wrap rivet.kit -nocompress
 )
 
 # Copy output kit to target
