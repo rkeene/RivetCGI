@@ -713,11 +713,22 @@ proc call_page {{useenv ""} {createinterp 0}} {
 		set fd [open $targetfile r]
 		fconfigure $fd -encoding binary -translation {binary binary}
 		fconfigure $outchan -encoding binary -translation {binary binary}
-		catch {
-			fcopy $fd $outchan -command [list set ::rivetstarkit::fcopy([list $fd $outchan $targetfile])]
-		}
 
-		vwait ::rivetstarkit::fcopy([list $fd $outchan $targetfile])
+		# If we've been asked to create an interpreter it must mean
+		# that we are sharing resources, so do the copy inside the
+		# event loop
+		if {$createinterp} {
+			catch {
+				fcopy $fd $outchan -command [list set ::rivetstarkit::fcopy([list $fd $outchan $targetfile])]
+			}
+
+			vwait ::rivetstarkit::fcopy([list $fd $outchan $targetfile])
+		} else {
+			# Otherwise, do the copy in the foreground.
+			catch {
+				fcopy $fd $outchan
+			}
+		}
 
 		close $fd
 	}
