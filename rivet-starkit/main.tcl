@@ -714,20 +714,9 @@ proc call_page {{useenv ""} {createinterp 0}} {
 		fconfigure $fd -encoding binary -translation {binary binary}
 		fconfigure $outchan -encoding binary -translation {binary binary}
 
-		# If we've been asked to create an interpreter it must mean
-		# that we are sharing resources, so do the copy inside the
-		# event loop
-		if {$createinterp} {
-			catch {
-				fcopy $fd $outchan -command [list set ::rivetstarkit::fcopy([list $fd $outchan $targetfile])]
-			}
-
-			vwait ::rivetstarkit::fcopy([list $fd $outchan $targetfile])
-		} else {
-			# Otherwise, do the copy in the foreground.
-			catch {
-				fcopy $fd $outchan
-			}
+		# Do the copy in the foreground.
+		catch {
+			fcopy $fd $outchan
 		}
 
 		close $fd
@@ -771,9 +760,11 @@ proc rivet_cgi_server {addr port foreground initscp logfile errorlogfile maxthre
 	if {$canfork} {
 		set process_model "fork"
 	} else {
-		catch {
-			package require Thread
-			set process_model "thread"
+		if {$maxthreads > 0} {
+			catch {
+				package require Thread
+				set process_model "thread"
+			}
 		}
 	}
 	unset canfork
