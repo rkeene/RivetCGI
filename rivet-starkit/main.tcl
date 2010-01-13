@@ -727,23 +727,32 @@ proc print_help {} {
 	tcl_puts "Usage: [file tail [info nameofexecutable]] {--server \[--address <address>\]"
 	tcl_puts "       \[--port <port>\] \[--foreground {yes|no}\] \[--init <scp>\]"
 	tcl_puts "       \[--logfile {-|<file>}\] \[--errorlog {-|<file>}\] \[--maxthreads <num>\]"
+	tcl_puts "       \[--sslport <port>\] \[--sslcert <file>\] \[--sslkey <file>\]"
+	tcl_puts "       \[--sslcafile <file>\] \[--sslcadir <dir>\] \[--sslreqcert {yes|no}\]"
 	tcl_puts "       |--cgi|--help|--version}"
 	tcl_puts "   --server           Run in standalone server mode"
 	tcl_puts "   --address address  Listen on address for HTTP requests (server mode, default"
 	tcl_puts "                      is \"ALL\")"
-	tcl_puts "   --port portno      Listen on port for HTTP requests (server mode, default is"
+	tcl_puts "   --port port        Listen on port for HTTP requests (server mode, default is"
 	tcl_puts "                      \"80\")"
 	tcl_puts "   --foreground fg    Run in foreground (server mode, default is \"no\")"
 	tcl_puts "   --init script      Run script prior to accepting connections (server mode)"
 	tcl_puts "   --logfile file     Log request information to file (or stdout) (server mode)"
 	tcl_puts "   --errorlog file    Log error information to file (or stderr) (server mode)"
-	tcl_puts "   --maxthreads num  Maximum number of threads to allow to exist (server mode)"
+	tcl_puts "   --maxthreads num   Maximum number of threads to allow to exist (server mode)"
+	tcl_puts "   --sslport port     Listen on port for HTTPS requests (server mode, 0 disables,"
+	tcl_puts "                      default is 0)"
+	tcl_puts "   --sslcert file     Path to our certificate (server mode)"
+	tcl_puts "   --sslkey file      Path to our key (server mode)"
+	tcl_puts "   --sslcafile file   Path to CA certificate (server mode)"
+	tcl_puts "   --sslcadir dir     Path to directory containing CA certificates (server mode)"
+	tcl_puts "   --sslreqcert bool  Require client certificate (server mode, default is \"no\")"
 	tcl_puts "   --cgi              Execute as a CGI"
 	tcl_puts "   --help             This help"
 	tcl_puts "   --version          Print version and exit"
 }
 
-proc rivet_cgi_server {addr port foreground initscp logfile errorlogfile maxthreads} {
+proc rivet_cgi_server {addr ports foreground initscp logfile errorlogfile maxthreads sslopts_array} {
 	catch {
 		package require Tclx
 	}
@@ -810,10 +819,51 @@ proc rivet_cgi_server {addr port foreground initscp logfile errorlogfile maxthre
 		}
 	}
 
-	if {$addr == "ALL"} {
-		set ::rivetstarkit::masterfd [socket -server [list rivet_cgi_server_request $port $logfd $elogfd $process_model $maxthreads] $port]
-	} else {
-		set ::rivetstarkit::masterfd [socket -server [list rivet_cgi_server_request $port $logfd $elogfd $process_model $maxthreads] -myaddr $addr $port]
+	foreach port $ports {
+		if {[string match "ssl:*" $port]} {
+			set port [lindex [split $port :] 1]
+			set mode https
+		} else {
+			set mode http
+		}
+
+		set servercmd [list rivet_cgi_server_request $port $logfd $elogfd $process_model $maxthreads $mode]
+
+		if {$mode == "https"} {
+			array set sslopts $sslopts_array
+
+			package require tls
+
+			set cmd [list tls::socket -server $servercmd -tls1 true]
+			foreach opt [array names sslopts] {
+				set val $sslopts($opt)
+
+				switch -- $opt {
+					"require" {
+						set val [expr $val]
+					}
+					default {
+						if {$val == ""} {
+							continue
+						}
+					}
+				}
+
+				lappend cmd "-$opt" $val
+			}
+		} else {
+			set mode http
+			set cmd [list socket -server $servercmd]
+		}
+
+		if {$addr != "ALL"} {
+			lappend cmd -myaddr $addr
+		}
+		lappend cmd $port
+
+		set currfd [eval $cmd]
+
+		lappend ::rivetstarkit::masterfd $currfd
 	}
 
 	if {!$foreground} {
@@ -847,7 +897,7 @@ proc rivet_cgi_server {addr port foreground initscp logfile errorlogfile maxthre
 	vwait __FOREVER__
 }
 
-proc rivet_cgi_server_request {hostport logfd elogfd pmodel maxthreads sock addr port {threadId ""}} {
+proc rivet_cgi_server_request {hostport logfd elogfd pmodel maxthreads httpmode sock addr port {threadId ""}} {
 	switch -- $pmodel {
 		"fork" {
 			# Flush log descriptor, so buffer doesn't contain any extra data.
@@ -876,8 +926,10 @@ proc rivet_cgi_server_request {hostport logfd elogfd pmodel maxthreads sock addr
 				return
 			}
 
-			catch {
-				close $::rivetstarkit::masterfd
+			foreach masterfd $::rivetstarkit::masterfd {
+				catch {
+					close $masterfd
+				}
 			}
 		}
 		"thread" {
@@ -956,7 +1008,7 @@ proc rivet_cgi_server_request {hostport logfd elogfd pmodel maxthreads sock addr
 			set ::rivetstarkit::threadinfo($threadId) 1
 
 			# Perform the bottom-half of the processing (we are required to re-enter the event loop)
-			after idle [list rivet_cgi_server_request $hostport $logfd $elogfd "thread-parent" 0 $sock $addr $port $threadId]
+			after idle [list rivet_cgi_server_request $hostport $logfd $elogfd "thread-parent" 0 $httpmode $sock $addr $port $threadId]
 
 			return
 		}
@@ -967,7 +1019,7 @@ proc rivet_cgi_server_request {hostport logfd elogfd pmodel maxthreads sock addr
 			thread::transfer $threadId $sock
 
 			tcl_puts $elogfd "Calling child thread to handle request ($threadId) in background"
-			thread::send -async $threadId [list rivet_cgi_server_request $hostport "" "" "thread-child" 0 $sock $addr $port [thread::id]]
+			thread::send -async $threadId [list rivet_cgi_server_request $hostport "" "" "thread-child" 0 $httpmode $sock $addr $port [thread::id]]
 			tcl_puts $elogfd " ... done ($threadId)."
 			return
 		}
@@ -981,19 +1033,24 @@ proc rivet_cgi_server_request {hostport logfd elogfd pmodel maxthreads sock addr
 		}
 	}
 
-	catch {
+	if {[catch {
 		# Cleanup socket information
 		unset -nocomplain ::rivetstarkit::sockinfo($sock)
 		set ::rivetstarkit::sockinfo($sock) [list state NEW]
 		set ::rivetstarkit::finished($sock) 0
 
 		# Handle connection from data
+		fconfigure $sock -buffering line
 		fileevent $sock readable [list rivet_cgi_server_request_data $sock $addr $hostport $logfd $elogfd $pmodel]
 
 		vwait ::rivetstarkit::finished($sock)
 
 		catch {
 			close $sock
+		}
+	} err]} {
+		if {$elogfd != ""} {
+			tcl_puts $elogfd "Error while installing callback: \"$err\""
 		}
 	}
 
@@ -1020,6 +1077,7 @@ proc rivet_cgi_server_request_data {sock addr hostport logfd elogfd pmodel} {
 	array set sockinfo $::rivetstarkit::sockinfo($sock)
 
 	gets $sock line
+	set line [string trimright $line "\r\n"]
 
 	if {$line == "" && [eof $sock]} {
 		# Tell the event loop that we're done here.
@@ -1189,17 +1247,27 @@ if {![info exists ::env(GATEWAY_INTERFACE)]} {
 			set options(--logfile) ""
 			set options(--errorlog) ""
 			set options(--maxthreads) 16
+			set options(--sslport) 0
+			set options(--sslcert) ""
+			set options(--sslkey) ""
+			set options(--sslcafile) ""
+			set options(--sslcadir) ""
+			set options(--sslreqcert) 0
 			array set options $argv
 
 			set rivet_cgi_server_addr $options(--address)
 			set rivet_cgi_server_port $options(--port)
+			if {$options(--sslport) != "0"} {
+				append rivet_cgi_server_port " ssl:[join $options(--sslport) { ssl:}]"
+			}
 			set rivet_cgi_server_fg [expr !!($options(--foreground))]
 			set rivet_cgi_server_init $options(--init)
 			set rivet_cgi_server_logfile $options(--logfile)
 			set rivet_cgi_server_errorlogfile $options(--errorlog)
 			set rivet_cgi_server_maxthreads $options(--maxthreads)
+			set rivet_cgi_server_sslopts [list certfile $options(--sslcert) keyfile $options(--sslkey) cafile $options(--sslcafile) cadir $options(--sslcadir) require $options(--sslreqcert)]
 
-			rivet_cgi_server $rivet_cgi_server_addr $rivet_cgi_server_port $rivet_cgi_server_fg $rivet_cgi_server_init $rivet_cgi_server_logfile $rivet_cgi_server_errorlogfile $rivet_cgi_server_maxthreads
+			rivet_cgi_server $rivet_cgi_server_addr $rivet_cgi_server_port $rivet_cgi_server_fg $rivet_cgi_server_init $rivet_cgi_server_logfile $rivet_cgi_server_errorlogfile $rivet_cgi_server_maxthreads $rivet_cgi_server_sslopts
 
 			# If rivet_cgi_server returns, something went wrong...
 			exit 1
