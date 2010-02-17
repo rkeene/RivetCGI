@@ -1192,6 +1192,77 @@ proc rivet_cgi_server_request_data {sock addr hostport logfd elogfd pmodel} {
 		# Rivet/CGI knows how to interface
 		set myenv(RIVET_INTERFACE) [list FULLHEADERS $sock $sock $elogfd]
 
+		# Set TLS Socket Info
+		array set tlsinfo_peer [list sbits 0]
+		array set tlsinfo_local [list sbits 0]
+		catch {
+			array set tlsinfo_peer [tls::status $sock]
+
+			set myenv(HTTPS) on
+		}
+		catch {
+			array set tlsinfo_local [tls::status -local $sock]
+		}
+
+		## Set TLS client CGI Variables
+		if {$tlsinfo_peer(sbits) != 0} {
+			set myenv(SSL_CLIENT_VERIFY) SUCCESS
+			foreach {myenvvar tlsvar} [list SSL_CLIENT_S_DN subject SSL_CLIENT_I_DN issuer SSL_CLIENT_V_START notBefore SSL_CLIENT_V_END notAfter SSL_CLIENT_M_SERIAL serial SSL_CIPHER cipher SSL_CIPHER_USEKEYSIZE sbits] {
+				if {![info exists tlsinfo_peer($tlsvar)]} {
+					continue
+				}
+
+				set myenv($myenvvar) $tlsinfo_peer($tlsvar)
+			}
+
+		}
+
+		## Set TLS server CGI Variables
+		if {$tlsinfo_local(sbits) != 0} {
+			foreach {myenvvar tlsvar} [list SSL_SERVER_S_DN subject SSL_SERVER_I_DN issuer SSL_SERVER_V_START notBefore SSL_SERVER_V_END notAfter SSL_SERVER_M_SERIAL serial SSL_CIPHER cipher SSL_CIPHER_USEKEYSIZE sbits] {
+				if {![info exists tlsinfo_local($tlsvar)]} {
+					continue
+				}
+
+				set myenv($myenvvar) $tlsinfo_local($tlsvar)
+			}
+		}
+
+		## Set TLS client/server X.509 component CGI variables
+		foreach locationvar [list tlsinfo_peer tlsinfo_local] {
+			switch -- $locationvar {
+				"tlsinfo_peer" {
+					set locationcgivar "CLIENT"
+				}
+				"tlsinfo_local" {
+					set locationcgivar "SERVER"
+				}
+			}
+
+			foreach type [list subject issuer] {
+				if {![info exists [set locationvar]($type)]} {
+					continue
+				}
+				switch -- $type {
+					"subject" {
+						set typecgivar "S"
+					}
+					"issuer" {
+						set typecgivar "I"
+					}
+				}
+
+				set curr_dn [set [set locationvar]($type)]
+				foreach component [split $curr_dn ,] {
+					set component_work [split $component =]
+					set component_name [string trim [string toupper [lindex $component_work 0]]]
+					set component_val [string trim [join [lrange $component_work 1 end] =]]
+
+					set myenv(SSL_${locationcgivar}_${typecgivar}_DN_${component_name}) $component_val
+				}
+			}
+		}
+
 		# Call "call_page" with the new enivronment
 		if {[catch {
 			if {$elogfd != ""} {
