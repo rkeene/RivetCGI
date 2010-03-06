@@ -109,10 +109,10 @@ proc rivet::parse { data outbufvar } {
 			append outbuf "\\$"
 		    }
 		    "\[" {
-			append outbuf "\\["
+			append outbuf "\\\["
 		    }
 		    "\]" {
-			append outbuf "\\]"
+			append outbuf "\\\]"
 		    }
 		    "\"" {
 			append outbuf "\\\""
