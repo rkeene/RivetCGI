@@ -1,0 +1,20 @@
+<html>
+  <head>
+    <title>Rivet/CGI Example Test 1</title>
+  </head>
+  <body>
+    This is a simple Rivet test.<br>
+<?
+	if {[upload exists file]} {
+		puts "Found: [upload filename file], fd = [upload channel file], size = [upload size file], type = [upload type file]"
+	} else {
+?>
+    <form method="post" enctype="multipart/form-data">
+      <input name="file" type="file">
+      <input name="submit" type="submit">
+    </form>
+<?
+	}
+?>
+  </body>
+</html>
