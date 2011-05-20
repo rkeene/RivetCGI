@@ -43,6 +43,18 @@ namespace eval rivet {
 	proc ::rivet::reset {} {
 		unset -nocomplain ::rivet::header_pairs ::rivet::statuscode ::rivet::header_redirect ::rivet::cache_vars ::rivet::cache_vars_qs ::rivet::cache_vars_post ::rivet::cache_vars_contenttype ::rivet::cache_vars_contenttype_var ::rivet::cache_tmpdir
 
+		if {[info exists ::rivet::cache_uploads]} {
+			foreach {var namefd} [array get ::rivet::cache_uploads] {
+				set fd [lindex $namefd 1]
+
+				catch {
+					close $fd
+				}
+			}
+
+			unset ::rivet::cache_uploads
+		}
+
 		array set ::rivet::header_pairs {}
 		set ::rivet::header_type "text/html"
 		set ::rivet::header_sent 0
@@ -128,7 +140,7 @@ proc rivet_flush {} {
 			set ::rivet::statuscode 200
 		}
 
-		rivet_cgi_server_writehttpheader $::rivet::statuscode
+		::rivet::cgi_server_writehttpheader $::rivet::statuscode
 
 		if {![info exists ::rivet::header_redirect]} {
 			tcl_puts $outchan "Content-type: $::rivet::header_type"
@@ -168,7 +180,7 @@ proc rivet_error {} {
 
 	if {!$::rivet::header_sent} {
 		set ::rivet::header_sent 1
-		rivet_cgi_server_writehttpheader 200
+		::rivet::cgi_server_writehttpheader 200
 		tcl_puts $outchan "Content-type: text/html"
 		tcl_puts $outchan ""
 	}
@@ -246,7 +258,7 @@ proc rivet_puts args {
 rename puts tcl_puts
 rename rivet_puts puts
 
-proc dehexcode {val} {
+proc ::rivet::dehexcode {val} {
         set val [string map [list "+" " "] $val]
         foreach pt [split $val %] {
                 if {![info exists rval]} { set rval $pt; continue }
@@ -262,7 +274,7 @@ proc var_qs args {
 	set var [lindex $args 1]
 	set defval [lindex $args 2]
 
-	return [_var get $cmd $var $defval]
+	return [::rivet::_var get $cmd $var $defval]
 }
 
 proc var_post args {
@@ -270,7 +282,7 @@ proc var_post args {
 	set var [lindex $args 1]
 	set defval [lindex $args 2]
 
-	return [_var post $cmd $var $defval]
+	return [::rivet::_var post $cmd $var $defval]
 }
 
 proc var args {
@@ -278,10 +290,10 @@ proc var args {
 	set var [lindex $args 1]
 	set defval [lindex $args 2]
 
-	return [_var all $cmd $var $defval]
+	return [::rivet::_var all $cmd $var $defval]
 }
 
-proc _var args {
+proc ::rivet::_var args {
 	set inchan stdin
 	if {[info exists ::env(RIVET_INTERFACE)]} {
 		set inchan [lindex $::env(RIVET_INTERFACE) 1]
@@ -341,34 +353,33 @@ proc _var args {
 					} else {
 						set tmpdir "/tmp"
 					}
-					set ::rivet::cache_tmpdir [file join $tmpdir rivet-upload-[pid][expr rand()]]
+					set cache_tmpdir [file join $tmpdir rivet-upload-[pid][expr rand()]]
 					catch {
-						file mkdir $::rivet::cache_tmpdir
-						file attributes $::rivet::cache_tmpdir -permissions 0700
+						file mkdir $cache_tmpdir
+						file attributes $cache_tmpdir -permissions 0700
 					}
 
-					# Copy stdin to file in temporary directory
-					set tmpfile [file join $::rivet::cache_tmpdir $inchan]
-					set tmpfd [open $tmpfile w]
-					fconfigure $tmpfd -translation [list binary binary]
-					fconfigure $inchan -translation [list binary binary]
-					fcopy $inchan $tmpfd
-					close $tmpfd
+					set vals_and_fds_arr [::rivet::handle_upload $inchan $cache_tmpdir $::rivet::cache_vars_contenttype_var(boundary)]
+					array set vals [lindex $vals_and_fds_arr 0]
+					array set fds [lindex $vals_and_fds_arr 1]
 
-					# Split out everything with a content-type into a seperate file, noting this for "upload" to handle
-					# Everything else put in "vars_post"
-					set tmpfd [open $tmpfile r]
-					while 1 {
-						gets $tmpfd line
-						if {[eof $tmpfd]} {
-							break
+					foreach var [array names vals] {
+						if {[info exists fds($var)]} {
+							set fd [lindex $fds($var) 0]
+							set contenttype [lindex $fds($var) 1]
+							set size [lindex $fds($var) 2]
+
+							set ::rivet::cache_uploads($var) [list $vals($var) $fd $contenttype $size]
+						} else {
+							set value $vals($var)
+							lappend ::rivet::cache_vars_post($var) $value
+							lappend ::rivet::cache_vars($var) $value
 						}
 					}
-					close $tmpfd
 
-					# Cleanup temporary directory if no files have been saved there, otherwise schedule this cleanup atexit
+					# Cleanup temporary directory
 					catch {
-#						file delete -force -- $::rivet::cache_tmpdir
+						file delete -force -- $cache_tmpdir
 					}
 				}
 			}
@@ -379,14 +390,14 @@ proc _var args {
 		foreach varpair [split $vars_qs &] {
 			set varpair [split $varpair =]
 			set var [lindex $varpair 0]
-			set value [dehexcode [lindex $varpair 1]]
+			set value [::rivet::dehexcode [lindex $varpair 1]]
 			lappend ::rivet::cache_vars_qs($var) $value
 			lappend ::rivet::cache_vars($var) $value
 		}
 		foreach varpair [split $vars_post &] {
 			set varpair [split $varpair =]
 			set var [lindex $varpair 0]
-			set value [dehexcode [lindex $varpair 1]]
+			set value [::rivet::dehexcode [lindex $varpair 1]]
 			lappend ::rivet::cache_vars_post($var) $value
 			lappend ::rivet::cache_vars($var) $value
 		}
@@ -449,6 +460,187 @@ proc _var args {
 	return $retval
 }
 
+proc ::rivet::handle_upload {fd workdir seperator} {
+	array set args {}
+	array set argsfd {}
+
+	set seperator "--${seperator}"
+
+	# Select random base name for temporary files
+	set basename_tmpfile [file join "$workdir" "upload-[expr rand()][expr rand()][expr rand()]"]
+
+	# Configure fd
+	fconfigure $fd -translation binary
+
+	# Process fd into files or arguments
+	set nextblock "\015\012[read $fd 1024]"
+	set line_oriented 0
+	set next_line_oriented 0
+	set idx 0
+	while 1 {
+		if {[string length $nextblock] == 0 && [eof $fd]} {
+			break
+		}
+
+		set block $nextblock
+		set nextblock [read $fd 1024]
+		set bigblock "${block}${nextblock}"
+
+		if {$next_line_oriented} {
+			set line_oriented 1
+
+			set next_line_oriented 0
+		}
+
+		set blockend -1
+		while 1 {
+			set blockend [string first "\015\012$seperator\015\012" $bigblock [expr {$blockend + 1}]]
+
+			if {$blockend == -1} {
+				set blockend [string first "\015\012${seperator}--\015\012" $bigblock [expr {$blockend + 1}]]
+			}
+
+			if {$blockend == -1} {
+				break
+			}
+
+			if {($blockend + [string length $seperator] + 4) >= [string length $block]} {
+				break
+			}
+
+			set nextblockstart_idx [expr {$blockend + [string length $seperator] + 4}]
+			set nextblockstart [string range $block $nextblockstart_idx end]
+
+			set nextblock "$nextblockstart$nextblock"
+			set block [string range $block 0 [expr {$blockend-1}]]
+
+			set next_line_oriented 1
+		}
+
+		while {$line_oriented} {
+			set line_end [string first "\015\012" $block 0]
+			if {$line_end == -1} {
+				append line $block
+
+				break
+			}
+
+			append line [string range $block 0 [expr {$line_end - 1}]]
+			set block "[string range $block [expr {$line_end + 2}] end]"
+
+			if {$line == ""} {
+				unset -nocomplain name tmpfile filename
+
+				if {[info exists lineinfo([list content-disposition name])]} {
+					set name $lineinfo([list content-disposition name])
+				}
+
+				if {[info exists lineinfo([list content-disposition filename])]} {
+					set filename $lineinfo([list content-disposition filename])
+				}
+
+				if {[info exists outfd]} {
+					close $outfd
+
+					unset outfd
+				}
+
+				set appendmode "var"
+				if {[info exists lineinfo(content-type)]} {
+					# We have data that should be stored in a file
+					set tmpfile "${basename_tmpfile}-${idx}"
+					incr idx
+
+					set outfd [open $tmpfile "w"]
+					fconfigure $outfd -translation binary
+
+					set contenttype $lineinfo(content-type)
+
+					if {[info exists name]} {
+						set tmpfd [open $tmpfile "r"]
+						fconfigure $tmpfd -translation binary
+
+						set argsfd($name) [list $tmpfd $contenttype]
+
+						if {![info exists filename]} {
+							set args($name) ""
+						} else {
+							set args($name) $filename
+						}
+
+						set appendmode "file"
+					}
+				}
+
+				if {[info exists tmpfile]} {
+					file delete -- $tmpfile
+				}
+
+				unset -nocomplain lineinfo
+
+				set line_oriented 0
+
+				continue
+			}
+
+			set work [split $line ":"]
+
+			set cmd [lindex $work 0]
+			set cmd [string trim [string tolower $cmd]]
+
+			set value [string trim [join [lrange $work 1 end] ":"]]
+
+			set work [split $value ";"]
+			set value [lindex $work 0]
+
+			set lineinfo([list $cmd]) $value
+
+			foreach part [lrange $work 1 end] {
+				set part [string trim $part]
+
+				set partwork [split $part "="]
+
+				set partvar [lindex $partwork 0]
+				set partval [join [lrange $partwork 1 end] "="]
+
+				if {[string index $partval 0] == "\"" && [string index $partval end] == "\""} {
+					set partval [string range $partval 1 end-1]
+				}
+
+				set lineinfo([list $cmd $partvar]) $partval
+			}
+
+			set line ""
+		}
+
+		if {![info exists appendmode]} {
+			continue
+		}
+
+		switch -- $appendmode {
+			"file" {
+				puts -nonewline $outfd $block
+			}
+			"var" {
+				if {[info exists name]} {
+					append args($name) $block
+				}
+			}
+		}
+	}
+
+	foreach var [array names argsfd] {
+		set fd [lindex $argsfd($var) 0]
+		seek $fd 0 end
+
+		lappend argsfd($var) [tell $fd]
+
+		seek $fd 0 start
+	}
+
+	return [list [array get args] [array get argsfd]]
+}
+
 proc parse {file} {
 	return [eval [rivet::parserivet $file]]
 }
@@ -507,7 +699,7 @@ proc env {var} {
 	return $::env($var)
 }
  
-proc rivet_cgi_server_writehttpheader {statuscode {useenv ""}} {
+proc ::rivet::cgi_server_writehttpheader {statuscode {useenv ""}} {
 	if {$useenv eq ""} {
 		upvar ::env env
 	} else {
@@ -532,8 +724,74 @@ proc rivet_cgi_server_writehttpheader {statuscode {useenv ""}} {
 
 proc load_headers args { }
 
+proc upload args {
+	set cmd [lindex $args 0]
+	set name [lindex $args 1]
+	set filename [lindex $args 2]
+
+	# Ensure that we have processed arguments
+	::rivet::_var post number
+
+	switch -- $cmd {
+		channel {
+			set fd [lindex $::rivet::cache_uploads($name) 1]
+
+			return $fd
+		}
+		save {
+			set fd [lindex $::rivet::cache_uploads($name) 1]
+			set ofd [open $filename "w"]
+			fconfigure $ofd -translation binary
+
+			set start [tell $fd]
+			seek $fd 0 start
+
+			fcopy $fd $ofd
+
+			seek $fd $start start
+
+			close $ofd
+		}
+		data {
+			set fd [lindex $::rivet::cache_uploads($name) 1]
+
+			set start [tell $fd]
+			seek $fd 0 start
+
+			set retval [read $fd]
+
+			seek $fd $start start
+
+			return $fd
+		}
+		exists {
+			return [info exists ::rivet::cache_uploads($name)]
+		}
+		size {
+			set size [lindex $::rivet::cache_uploads($name) 3]
+
+			return $size
+		}
+		type {
+			set type [lindex $::rivet::cache_uploads($name) 2]
+
+			return $type
+		}
+		filename {
+			set remote_filename [lindex $::rivet::cache_uploads($name) 0]
+
+			return $remote_filename
+		}
+		tempname {
+			return -code error "\"upload tempname\" not implemented"
+		}
+		names {
+			return [array names ::rivet::cache_uploads]
+		}
+	}
+}
+
 # We need to fill these in, of course.
 
 proc makeurl args { return -code error "makeurl not implemented yet"}
-proc upload args { return -code error "upload not implemented yet" }
 proc virtual_filename args { return -code error "virtual_filename not implemented yet" }

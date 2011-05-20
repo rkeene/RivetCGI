@@ -87,19 +87,19 @@ proc call_page {{useenv ""} {createinterp 0}} {
 	if {![file exists $targetfile]} {
 		if {$targetfile == "__RIVETSTARKIT_FORBIDDEN__"} {
 			# Return a 403 (Forbidden)
-			rivet_cgi_server_writehttpheader 403 [array get env]
+			::rivet::cgi_server_writehttpheader 403 [array get env]
 			tcl_puts $outchan "Content-type: text/html"
 			tcl_puts $outchan ""
 			tcl_puts $outchan "<html><head><title>Forbidden</title></head><body><h1>File Access Forbidden</h1></body>"
 		} elseif {[file tail $targetfile] == "__RIVETSTARKIT_INDEX__"} {
 			# Return a 403 (Forbidden)
-			rivet_cgi_server_writehttpheader 403 [array get env]
+			::rivet::cgi_server_writehttpheader 403 [array get env]
 			tcl_puts $outchan "Content-type: text/html"
 			tcl_puts $outchan ""
 			tcl_puts $outchan "<html><head><title>Directory Listing Forbidden</title></head><body><h1>Directory Listing Forbidden</h1></body>"
 		} else {
 			# Return a 404 (File Not Found)
-			rivet_cgi_server_writehttpheader 404 [array get env]
+			::rivet::cgi_server_writehttpheader 404 [array get env]
 			tcl_puts $outchan "Content-type: text/html"
 			tcl_puts $outchan ""
 			tcl_puts $outchan "<html><head><title>File Not Found</title></head><body><h1>File Not Found</h1></body>"
@@ -699,7 +699,7 @@ proc call_page {{useenv ""} {createinterp 0}} {
 	
 	# Dump static files
 	if {[info exists statictype]} {
-		rivet_cgi_server_writehttpheader 200 [array get env]
+		::rivet::cgi_server_writehttpheader 200 [array get env]
 		tcl_puts $outchan "Content-type: $statictype"
 		catch {
 			tcl_puts $outchan "Last-Modified: [clock format [file mtime $targetfile] -format {%a, %d %b %Y %H:%M:%S GMT} -gmt 1]"
