@@ -100,10 +100,10 @@ proc rivet::parse { data outbufvar } {
 		}
 		switch -exact -- $cur {
 		    "\{" {
-			append outbuf "\\{"
+			append outbuf "\\\{"
 		    }
 		    "\}" {
-			append outbuf "\\}"
+			append outbuf "\\\}"
 		    }
 		    "\$" {
 			append outbuf "\\$"
