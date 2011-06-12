@@ -1122,7 +1122,11 @@ proc rivet_cgi_server_request_data {sock addr hostport logfd elogfd pmodel} {
 	}
 
 	if {$sockinfo(state) == "HANDLEREQUEST"} {
-		array set headers $sockinfo(headers)
+		if {[info exists sockinfo(headers)]} {
+			array set headers $sockinfo(headers)
+		} else {
+			array set headers [list]
+		}
 
 		# Write log entry
 		if {[info exists headers(USER-AGENT)]} {
