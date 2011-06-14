@@ -359,7 +359,13 @@ proc ::rivet::_var args {
 						file attributes $cache_tmpdir -permissions 0700
 					}
 
-					set vals_and_fds_arr [::rivet::handle_upload $inchan $cache_tmpdir $::rivet::cache_vars_contenttype_var(boundary)]
+					if {[info exists env(CONTENT_LENGTH)]} {
+						set content_length $env(CONTENT_LENGTH)
+					} else {
+						set content_length -1
+					}
+
+					set vals_and_fds_arr [::rivet::handle_upload $inchan $cache_tmpdir $::rivet::cache_vars_contenttype_var(boundary) $content_length]
 					array set vals [lindex $vals_and_fds_arr 0]
 					array set fds [lindex $vals_and_fds_arr 1]
 
@@ -460,7 +466,7 @@ proc ::rivet::_var args {
 	return $retval
 }
 
-proc ::rivet::handle_upload {fd workdir seperator} {
+proc ::rivet::handle_upload {fd workdir seperator content_length} {
 	array set args {}
 	array set argsfd {}
 
@@ -473,17 +479,47 @@ proc ::rivet::handle_upload {fd workdir seperator} {
 	fconfigure $fd -translation binary
 
 	# Process fd into files or arguments
-	set nextblock "\015\012[read $fd 1024]"
+	if {$content_length == -1 || $content_length > 1024} {
+		set bytes_to_read 1024
+	} else {
+		set bytes_to_read $content_length
+	}
+
+	if {$content_length != -1} {
+		incr content_length -${bytes_to_read}
+	}
+
+	set nextblock "\015\012[read $fd $bytes_to_read]"
 	set line_oriented 0
 	set next_line_oriented 0
 	set idx 0
 	while 1 {
-		if {[string length $nextblock] == 0 && [eof $fd]} {
-			break
+		if {[string length $nextblock] == 0} {
+			if {$content_length == -1 && [eof $fd]} {
+				break
+			}
+			if {$content_length == 0} {
+				break
+			}
+		}
+
+
+		if {$content_length == -1 || $content_length > 1024} {
+			set bytes_to_read 1024
+		} else {
+			set bytes_to_read $content_length
+		}
+
+		if {$content_length != -1} {
+			incr content_length -${bytes_to_read}
 		}
 
 		set block $nextblock
-		set nextblock [read $fd 1024]
+		if {$bytes_to_read > 0} {
+			set nextblock [read $fd $bytes_to_read]
+		} else {
+			set nextblock ""
+		}
 		set bigblock "${block}${nextblock}"
 
 		if {$next_line_oriented} {
