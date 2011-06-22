@@ -134,6 +134,7 @@ proc call_page {{useenv ""} {createinterp 0}} {
 			if {$createinterp} {
 				set myinterp [interp create]
 
+				$myinterp eval [list set ::auto_path $::auto_path]
 				$myinterp eval [list package require tclrivet]
 				$myinterp eval [list unset -nocomplain ::env]
 				$myinterp eval [list array set ::env [array get env]]
