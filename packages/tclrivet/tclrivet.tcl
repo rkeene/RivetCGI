@@ -41,7 +41,7 @@ proc include { filename } {
 namespace eval rivet {}
 namespace eval rivet {
 	proc ::rivet::reset {} {
-		unset -nocomplain ::rivet::header_pairs ::rivet::statuscode ::rivet::header_redirect ::rivet::cache_vars ::rivet::cache_vars_qs ::rivet::cache_vars_post ::rivet::cache_vars_contenttype ::rivet::cache_vars_contenttype_var ::rivet::cache_tmpdir
+		unset -nocomplain ::rivet::header_pairs ::rivet::statuscode ::rivet::header_redirect ::rivet::cache_vars ::rivet::cache_vars_qs ::rivet::cache_vars_post ::rivet::cache_vars_contenttype ::rivet::cache_vars_contenttype_var ::rivet::cache_tmpdir ::rivet::transfer_encoding ::rivet::sent_final_chunk
 
 		if {[info exists ::rivet::cache_uploads]} {
 			foreach {var namefd} [array get ::rivet::cache_uploads] {
@@ -127,10 +127,11 @@ namespace eval rivet {
 	::rivet::reset
 }
 
-proc rivet_flush {} {
+proc rivet_flush {{final_flush 0}} {
 	set outchan stdout
 	if {[info exists ::env(RIVET_INTERFACE)]} {
 		set outchan [lindex $::env(RIVET_INTERFACE) 2]
+		array set headers [lindex $::env(RIVET_INTERFACE) 4]
 	}
 
 	if {!$::rivet::header_sent} {
@@ -157,9 +158,39 @@ proc rivet_flush {} {
 		unset -nocomplain ::rivet::statuscode ::rivet::header_redirect ::rivet::header_pairs
 	}
 
-	if {!$::rivet::send_no_content} {
+	if {!$::rivet::send_no_content && [string length $::rivet::output_buffer] != "0"} {
+		if {[info exists ::rivet::transfer_encoding] && $::rivet::transfer_encoding == "chunked"} {
+			fconfigure $outchan -translation "crlf"
+
+			tcl_puts $outchan [format %x [string length $::rivet::output_buffer]]
+		}
+
+		fconfigure $outchan -translation binary
 		tcl_puts -nonewline $outchan $::rivet::output_buffer
+
+		if {[info exists ::rivet::transfer_encoding] && $::rivet::transfer_encoding == "chunked"} {
+			fconfigure $outchan -translation "crlf"
+
+			tcl_puts $outchan ""
+
+			fconfigure $outchan -translation binary
+		}
 	}
+
+	if {[info exists ::rivet::transfer_encoding] && $::rivet::transfer_encoding == "chunked" && ![info exists ::rivet::sent_final_chunk]} {
+		if {$final_flush == "1"} {
+			fconfigure $outchan -translation "crlf"
+
+			tcl_puts $outchan "0"
+			tcl_puts $outchan ""
+
+			fconfigure $outchan -translation binary
+
+			set ::rivet::sent_final_chunk 1
+			set ::rivet::send_no_content 1
+		}
+	}
+
 	set ::rivet::output_buffer ""
 }
 
@@ -176,13 +207,6 @@ proc rivet_error {} {
 		set incoming_errorInfo $errorInfo
 	} else {
 		set incoming_errorInfo "<<NO ERROR>>"
-	}
-
-	if {!$::rivet::header_sent} {
-		set ::rivet::header_sent 1
-		::rivet::cgi_server_writehttpheader 200
-		tcl_puts $outchan "Content-type: text/html"
-		tcl_puts $outchan ""
 	}
 
 	set uidprefix ""
@@ -206,15 +230,23 @@ proc rivet_error {} {
 	tcl_puts $errchan "$incoming_errorInfo"
 	tcl_puts $errchan "END_CASENUMBER=$caseid"
 
-	tcl_puts $outchan {<!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML 2.0//EN">}
-	tcl_puts $outchan {<html><head>}
-	tcl_puts $outchan {<title>Application Error</title>}
-	tcl_puts $outchan {</head><body>}
-	tcl_puts $outchan {<h1>Application Error</h1>}
-	tcl_puts $outchan {<p>An error has occured while processing your request.</p>}
-	tcl_puts $outchan "<p>This error has been assigned the case number <tt>$caseid</tt>.</p>"
-	tcl_puts $outchan "<p>Please reference this case number if you chose to contact the <a href=\"mailto:$::env(SERVER_ADMIN)?subject=case $caseid\">webmaster</a>"
-	tcl_puts $outchan {</body></html>}
+	append errmsg {<!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML 2.0//EN">} "\n"
+	append errmsg {<html><head>} "\n"
+	append errmsg {<title>Application Error</title>} "\n"
+	append errmsg {</head><body>} "\n"
+	append errmsg {<h1>Application Error</h1>} "\n"
+	append errmsg {<p>An error has occured while processing your request.</p>} "\n"
+	append errmsg "<p>This error has been assigned the case number <tt>$caseid</tt>.</p>" "\n"
+	append errmsg "<p>Please reference this case number if you chose to contact the <a href=\"mailto:$::env(SERVER_ADMIN)?subject=case $caseid\">webmaster</a>" "\n"
+	append errmsg {</body></html>} "\n"
+
+	if {!$::rivet::header_sent} {
+		set ::rivet::header_sent 1
+		::rivet::cgi_server_writehttpheader 200 [string length $errmsg]
+		tcl_puts $outchan "Content-type: text/html"
+		tcl_puts $outchan ""
+		tcl_puts -nonewline $outchan $errmsg
+	}
 
 }
 
@@ -246,8 +278,26 @@ proc rivet_puts args {
 		}
 	} else {
 		if {$fd == "stdout"} {
-			if {!$::rivet::send_no_content} {
-				tcl_puts -nonewline $outchan [lindex $args 0]$appendchar
+			set str [lindex $args 0]$appendchar
+			set strlen [string length $str]
+
+			if {!$::rivet::send_no_content && $strlen != "0"} {
+				if {[info exists ::rivet::transfer_encoding] && $::rivet::transfer_encoding == "chunked"} {
+					fconfigure $outchan -translation "crlf"
+
+					tcl_puts $outchan [format %x $strlen]
+				}
+
+				fconfigure $outchan -translation binary
+				tcl_puts -nonewline $outchan $str
+
+				if {[info exists ::rivet::transfer_encoding] && $::rivet::transfer_encoding == "chunked"} {
+					fconfigure $outchan -translation "crlf"
+
+					tcl_puts $outchan ""
+
+					fconfigure $outchan -translation binary
+				}
 			}
 		} else {
 			tcl_puts -nonewline $fd [lindex $args 0]$appendchar
@@ -735,7 +785,7 @@ proc env {var} {
 	return $::env($var)
 }
  
-proc ::rivet::cgi_server_writehttpheader {statuscode {useenv ""}} {
+proc ::rivet::cgi_server_writehttpheader {statuscode {useenv ""} {length -1}} {
 	if {$useenv eq ""} {
 		upvar ::env env
 	} else {
@@ -746,11 +796,36 @@ proc ::rivet::cgi_server_writehttpheader {statuscode {useenv ""}} {
 
 	if {[info exists env(RIVET_INTERFACE)]} {
 		set outchan [lindex $env(RIVET_INTERFACE) 2]
+		array set headers [lindex $env(RIVET_INTERFACE) 4]
+
 		if {[lindex $env(RIVET_INTERFACE) 0] == "FULLHEADERS"} {
+			fconfigure $outchan -translation crlf
+
 			tcl_puts $outchan "HTTP/1.1 $statuscode [::rivet::statuscode_to_str $statuscode]"
 			tcl_puts $outchan "Date: [clock format [clock seconds] -format {%a, %d %b %Y %H:%M:%S GMT} -gmt 1]"
 			tcl_puts $outchan "Server: Default"
-			tcl_puts $outchan "Connection: close"
+
+			unset -nocomplain ::rivet::transfer_encoding
+
+			if {$headers(CONNECTION) == "keep-alive"} {
+				if {$length != -1} {
+					tcl_puts $outchan "Content-Length: $length"
+					tcl_puts $outchan "Connection: keep-alive"
+				} else {
+					if {$statuscode == "200"} {
+						tcl_puts $outchan "Transfer-Encoding: chunked"
+						tcl_puts $outchan "Connection: keep-alive"
+						set ::rivet::transfer_encoding "chunked"
+					} else {
+						tcl_puts $outchan "Connection: close"
+					}
+				}
+			} else {
+				tcl_puts $outchan "Connection: close"
+			}
+
+			fconfigure $outchan -translation binary
+
 			return
 		}
 	}

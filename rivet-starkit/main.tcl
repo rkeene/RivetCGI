@@ -21,6 +21,7 @@ proc call_page {{useenv ""} {createinterp 0}} {
 		set inchan [lindex $env(RIVET_INTERFACE) 1]
 		set outchan [lindex $env(RIVET_INTERFACE) 2]
 		set elogchan [lindex $env(RIVET_INTERFACE) 3]
+		array set headers [lindex $env(RIVET_INTERFACE) 4]
 	}
 
 	# Determine if a sub-file has been requested
@@ -162,14 +163,14 @@ proc call_page {{useenv ""} {createinterp 0}} {
 				} err]} {
 					$myinterp eval [list rivet_error]
 
-					$myinterp eval [list rivet_flush]
+					$myinterp eval [list rivet_flush 1]
 
 					interp delete $myinterp
 					return
 				}
 
 				# Flush the output stream
-				$myinterp eval [list rivet_flush]
+				$myinterp eval [list rivet_flush 1]
 
 				interp delete $myinterp
 			} else {
@@ -185,13 +186,13 @@ proc call_page {{useenv ""} {createinterp 0}} {
 				} err]} {
 					rivet_error
 
-					rivet_flush
+					rivet_flush 1
 
 					return
 				}
 
 				# Flush the output stream
-				rivet_flush
+				rivet_flush 1
 			}
 	
 			return
@@ -700,14 +701,16 @@ proc call_page {{useenv ""} {createinterp 0}} {
 	
 	# Dump static files
 	if {[info exists statictype]} {
-		::rivet::cgi_server_writehttpheader 200 [array get env]
+		set filelen 0
+		catch {
+			set filelen [file size $targetfile]
+		}
+
+		::rivet::cgi_server_writehttpheader 200 [array get env] $filelen
 		tcl_puts $outchan "Content-type: $statictype"
 		catch {
 			tcl_puts $outchan "Last-Modified: [clock format [file mtime $targetfile] -format {%a, %d %b %Y %H:%M:%S GMT} -gmt 1]"
 			tcl_puts $outchan "Expires: Tue, 19 Jan 2038 03:14:07 GMT"
-		}
-		catch {
-			tcl_puts $outchan "Content-Length: [file size $targetfile]"
 		}
 		tcl_puts $outchan ""
 	
@@ -1098,6 +1101,7 @@ proc rivet_cgi_server_request {hostport logfd elogfd pmodel maxthreads httpmode 
 
 		# Handle connection from data
 		fconfigure $sock -buffering line
+		fconfigure $sock -translation crlf
 		fileevent $sock readable [list rivet_cgi_server_request_data $sock $addr $hostport $logfd $elogfd $pmodel]
 
 		vwait ::rivetstarkit::finished($sock)
@@ -1149,11 +1153,19 @@ proc rivet_cgi_server_request_data {sock addr hostport logfd elogfd pmodel} {
 		"NEW" {
 			set sockinfo(requestline) $line
 			set work [split $line " "]
+
 			set sockinfo(method) [string toupper [lindex $work 0]]
-			set sockinfo(httpproto) [string toupper [lindex $work end]]
+
+			if {[llength $work] == 2} {
+				set sockinfo(url) [lindex $work 1]
+				set sockinfo(httpproto) "HTTP/1.0"
+			} else {
+				set sockinfo(url) [join [lrange $work 1 end-1] " "]
+				set sockinfo(httpproto) [string toupper [lindex $work end]]
+			}
+
 			set sockinfo(state) HEADERS
 
-			set sockinfo(url) [join [lrange $work 1 end-1] " "]
 			set sockinfo(url) [regsub {http://[^/]*/} $sockinfo(url) {/}]
 
 			set work [split $sockinfo(url) ?]
@@ -1201,8 +1213,18 @@ proc rivet_cgi_server_request_data {sock addr hostport logfd elogfd pmodel} {
 
 		set localinfo [fconfigure $sock -sockname]
 		if {![info exists headers(CONNECTION)]} {
-			set headers(CONNECTION) "close"
+			switch -- $sockinfo(httpproto) {
+				"HTTP/1.1" {
+					set headers(CONNECTION) "keep-alive"
+				}
+				default {
+					set headers(CONNECTION) "close"
+				}
+			}
+		} else {
+			set headers(CONNECTION) [string tolower $headers(CONNECTION)]
 		}
+
 		if {![info exists headers(HOST)]} {
 			set headers(HOST) [lindex $localinfo 1]
 		}
@@ -1256,7 +1278,7 @@ proc rivet_cgi_server_request_data {sock addr hostport logfd elogfd pmodel} {
 
 		# Add Rivet Interface specification to fake environment, so further
 		# Rivet/CGI knows how to interface
-		set myenv(RIVET_INTERFACE) [list FULLHEADERS $sock $sock $elogfd]
+		set myenv(RIVET_INTERFACE) [list FULLHEADERS $sock $sock $elogfd [array get headers]]
 
 		# Set TLS Socket Info
 		array set tlsinfo_peer [list sbits 0]
@@ -1342,10 +1364,10 @@ proc rivet_cgi_server_request_data {sock addr hostport logfd elogfd pmodel} {
 
 		# Call "call_page" with the new enivronment
 		if {[catch {
-			if {$elogfd != ""} {
-				tcl_puts $elogfd "($sock/$addr/[pid]) Debug: [array get myenv] ++ headers = [array get headers]"
-				flush $elogfd
-			}
+if {$elogfd != ""} {
+tcl_puts $elogfd "($sock/$addr/[pid]) Debug: [array get myenv] ++ headers = [array get headers]"
+flush $elogfd
+}
 
 			if {$pmodel == "flat"} {
 				call_page [array get myenv] 1
@@ -1371,10 +1393,16 @@ proc rivet_cgi_server_request_data {sock addr hostport logfd elogfd pmodel} {
 
 		# Cleanup
 		unset sockinfo
-		array set sockinfo {}
+		set sockinfo(state) NEW
 
-		# Tell the event loop that we're done here.
-		set ::rivetstarkit::finished($sock) 1
+		if {$headers(CONNECTION) != "keep-alive"} {
+			# Tell the event loop that we're done here.
+			set ::rivetstarkit::finished($sock) 1
+		} else {
+			fconfigure $sock -buffering line
+			fconfigure $sock -translation crlf
+			fileevent $sock readable [list rivet_cgi_server_request_data $sock $addr $hostport $logfd $elogfd $pmodel]
+		}
 	}
  
 	set ::rivetstarkit::sockinfo($sock) [array get sockinfo]
