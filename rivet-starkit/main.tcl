@@ -747,10 +747,57 @@ proc print_help {} {
 	tcl_puts "   --sslkey file      Path to our key (server mode)"
 	tcl_puts "   --sslcafile file   Path to CA certificate (server mode)"
 	tcl_puts "   --sslcadir dir     Path to directory containing CA certificates (server mode)"
-	tcl_puts "   --sslreqcert bool  Require client certificate (server mode, default is \"no\")"
+	tcl_puts "   --sslreqcert bool  Request client certificate (server mode, default is \"no\")"
 	tcl_puts "   --cgi              Execute as a CGI"
 	tcl_puts "   --help             This help"
 	tcl_puts "   --version          Print version and exit"
+}
+
+proc rivet_cgi_tls_callback {logfd elogfd mode args} {
+	switch -- $mode {
+		"error" {
+			foreach {chan msg} $args break
+
+			if {$elogfd != ""} {
+				tcl_puts $elogfd "($chan) TLS error: $msg"
+			}
+
+			return 1
+		}
+		"verify" {
+			foreach {chan depth cert rc err} $args break
+
+			# Only care about client certificates, all others follow normal rules
+			if {$depth != 0} {
+				return $rc
+			}
+
+			if {$rc != "1"} {
+				# Do not note that this certificate is valid, but return OK
+
+				if {$elogfd != ""} {
+					tcl_puts $elogfd "($chan) Invalid cert $cert: $err"
+				}
+
+				set ::rivet_cgi_tls_verified($chan) 0
+
+				return 1
+			}
+
+			if {![info exists ::rivet_cgi_tls_verified($chan)]} {
+				# Verified
+
+				set ::rivet_cgi_tls_verified($chan) 1
+			}
+
+			return 1
+		}
+		"info" {
+		}
+		default {
+			return -code error "bad option \"$mode\": must be one of error, info, or verify"
+		}
+	}
 }
 
 proc rivet_cgi_server {addr ports foreground initscp logfile errorlogfile maxthreads sslopts_array} {
@@ -835,7 +882,7 @@ proc rivet_cgi_server {addr ports foreground initscp logfile errorlogfile maxthr
 
 			package require tls
 
-			set cmd [list tls::socket -server $servercmd -tls1 true]
+			set cmd [list tls::socket -server $servercmd -tls1 true -command [list rivet_cgi_tls_callback $logfd $elogfd]]
 			foreach opt [array names sslopts] {
 				set val $sslopts($opt)
 
@@ -922,6 +969,8 @@ proc rivet_cgi_server_request {hostport logfd elogfd pmodel maxthreads httpmode 
 			set mypid [fork]
 			if {$mypid != 0} {
 				catch {
+					unset -nocomplain ::rivet_cgi_tls_verified($sock)
+
 					close $sock
 				}
 				return
@@ -955,7 +1004,10 @@ proc rivet_cgi_server_request {hostport logfd elogfd pmodel maxthreads httpmode 
 				if {$numthreads > $maxthreads} {
 					tcl_puts $elogfd "Exceeded maximum number of threads ($maxthreads): $numthreads, closing socket!"
 
+					unset -nocomplain ::rivet_cgi_tls_verified($sock)
+
 					close $sock
+
 					return
 				}
 			}
@@ -976,12 +1028,16 @@ proc rivet_cgi_server_request {hostport logfd elogfd pmodel maxthreads httpmode 
 				}
 
 				# Copy the appropriate variables to the new thread
-				foreach var [list ::starkit::topdir] {
+				foreach var [list ::starkit::topdir ::rivet_cgi_tls_verified($sock)] {
 					if {[namespace qualifiers $var] != ""} {
 						thread::send $threadId [list namespace eval [namespace qualifiers $var] ""]
 					}
 
-					thread::send $threadId [list set $var [set $var]]
+					if {[info exists $var]} {
+						thread::send $threadId [list set $var [set $var]]
+					} else {
+						thread::send $threadId [list unset -nocomplain $var]
+					}
 				}
 
 				# Copy the appropriate procedures to the new thread
@@ -1047,6 +1103,8 @@ proc rivet_cgi_server_request {hostport logfd elogfd pmodel maxthreads httpmode 
 		vwait ::rivetstarkit::finished($sock)
 
 		catch {
+			unset -nocomplain ::rivet_cgi_tls_verified($sock)
+
 			close $sock
 		}
 	} err]} {
@@ -1107,6 +1165,9 @@ proc rivet_cgi_server_request_data {sock addr hostport logfd elogfd pmodel} {
 			# We only support GET and POST, everyone else we just close on.
 			if {$sockinfo(method) != "GET" && $sockinfo(method) != "POST"} {
 				set ::rivetstarkit::finished($sock) 1
+
+				unset -nocomplain ::rivet_cgi_tls_verified($sock)
+
 				close $sock
 			}
 		}
@@ -1203,7 +1264,6 @@ proc rivet_cgi_server_request_data {sock addr hostport logfd elogfd pmodel} {
 		catch {
 			array set tlsinfo_peer [tls::status $sock]
 
-			set myenv(HTTPS) on
 		}
 		catch {
 			array set tlsinfo_local [tls::status -local $sock]
@@ -1211,7 +1271,18 @@ proc rivet_cgi_server_request_data {sock addr hostport logfd elogfd pmodel} {
 
 		## Set TLS client CGI Variables
 		if {$tlsinfo_peer(sbits) != 0} {
-			set myenv(SSL_CLIENT_VERIFY) SUCCESS
+			set myenv(HTTPS) on
+
+			if {![info exists ::rivet_cgi_tls_verified($sock)]} {
+				set ::rivet_cgi_tls_verified($sock) 0
+			}
+
+			if {$::rivet_cgi_tls_verified($sock) == "1"} {
+				set myenv(SSL_CLIENT_VERIFY) SUCCESS
+			} else {
+				unset -nocomplain myenv(SSL_CLIENT_VERIFY)
+			}
+
 			foreach {myenvvar tlsvar} [list SSL_CLIENT_S_DN subject SSL_CLIENT_I_DN issuer SSL_CLIENT_V_START notBefore SSL_CLIENT_V_END notAfter SSL_CLIENT_M_SERIAL serial SSL_CIPHER cipher SSL_CIPHER_USEKEYSIZE sbits] {
 				if {![info exists tlsinfo_peer($tlsvar)]} {
 					continue
@@ -1219,11 +1290,12 @@ proc rivet_cgi_server_request_data {sock addr hostport logfd elogfd pmodel} {
 
 				set myenv($myenvvar) $tlsinfo_peer($tlsvar)
 			}
-
 		}
 
 		## Set TLS server CGI Variables
 		if {$tlsinfo_local(sbits) != 0} {
+			set myenv(HTTPS) on
+
 			foreach {myenvvar tlsvar} [list SSL_SERVER_S_DN subject SSL_SERVER_I_DN issuer SSL_SERVER_V_START notBefore SSL_SERVER_V_END notAfter SSL_SERVER_M_SERIAL serial SSL_CIPHER cipher SSL_CIPHER_USEKEYSIZE sbits] {
 				if {![info exists tlsinfo_local($tlsvar)]} {
 					continue
@@ -1341,7 +1413,7 @@ if {![info exists ::env(GATEWAY_INTERFACE)]} {
 			set rivet_cgi_server_logfile $options(--logfile)
 			set rivet_cgi_server_errorlogfile $options(--errorlog)
 			set rivet_cgi_server_maxthreads $options(--maxthreads)
-			set rivet_cgi_server_sslopts [list certfile $options(--sslcert) keyfile $options(--sslkey) cafile $options(--sslcafile) cadir $options(--sslcadir) require $options(--sslreqcert)]
+			set rivet_cgi_server_sslopts [list certfile $options(--sslcert) keyfile $options(--sslkey) cafile $options(--sslcafile) cadir $options(--sslcadir) request $options(--sslreqcert)]
 
 			rivet_cgi_server $rivet_cgi_server_addr $rivet_cgi_server_port $rivet_cgi_server_fg $rivet_cgi_server_init $rivet_cgi_server_logfile $rivet_cgi_server_errorlogfile $rivet_cgi_server_maxthreads $rivet_cgi_server_sslopts
 
