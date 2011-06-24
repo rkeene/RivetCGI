@@ -1364,11 +1364,6 @@ proc rivet_cgi_server_request_data {sock addr hostport logfd elogfd pmodel} {
 
 		# Call "call_page" with the new enivronment
 		if {[catch {
-if {$elogfd != ""} {
-tcl_puts $elogfd "($sock/$addr/[pid]) Debug: [array get myenv] ++ headers = [array get headers]"
-flush $elogfd
-}
-
 			if {$pmodel == "flat"} {
 				call_page [array get myenv] 1
 			} else {
