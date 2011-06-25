@@ -41,7 +41,7 @@ proc include { filename } {
 namespace eval rivet {}
 namespace eval rivet {
 	proc ::rivet::reset {} {
-		unset -nocomplain ::rivet::header_pairs ::rivet::statuscode ::rivet::header_redirect ::rivet::cache_vars ::rivet::cache_vars_qs ::rivet::cache_vars_post ::rivet::cache_vars_contenttype ::rivet::cache_vars_contenttype_var ::rivet::cache_tmpdir ::rivet::transfer_encoding ::rivet::sent_final_chunk
+		unset -nocomplain ::rivet::header_pairs ::rivet::statuscode ::rivet::header_redirect ::rivet::cache_vars ::rivet::cache_vars_qs ::rivet::cache_vars_post ::rivet::cache_vars_contenttype ::rivet::cache_vars_contenttype_var ::rivet::cache_tmpdir ::rivet::transfer_encoding ::rivet::sent_final_chunk ::rivet::connection
 
 		if {[info exists ::rivet::cache_uploads]} {
 			foreach {var namefd} [array get ::rivet::cache_uploads] {
@@ -127,7 +127,12 @@ namespace eval rivet {
 	::rivet::reset
 }
 
-proc rivet_flush {{final_flush 0}} {
+proc rivet_flush args {
+	set final_flush 0
+	if {[lsearch -exact $args "-final"] != "-1"} {
+		set final_flush 1
+	}
+
 	set outchan stdout
 	if {[info exists ::env(RIVET_INTERFACE)]} {
 		set outchan [lindex $::env(RIVET_INTERFACE) 2]
@@ -811,17 +816,21 @@ proc ::rivet::cgi_server_writehttpheader {statuscode {useenv ""} {length -1}} {
 				if {$length != -1} {
 					tcl_puts $outchan "Content-Length: $length"
 					tcl_puts $outchan "Connection: keep-alive"
+					set ::rivet::connection "keep-alive"
 				} else {
 					if {$statuscode == "200"} {
 						tcl_puts $outchan "Transfer-Encoding: chunked"
 						tcl_puts $outchan "Connection: keep-alive"
 						set ::rivet::transfer_encoding "chunked"
+						set ::rivet::connection "keep-alive"
 					} else {
 						tcl_puts $outchan "Connection: close"
+						set ::rivet::connection "close"
 					}
 				}
 			} else {
 				tcl_puts $outchan "Connection: close"
+				set ::rivet::connection "close"
 			}
 
 			fconfigure $outchan -translation binary

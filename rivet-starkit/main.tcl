@@ -162,15 +162,16 @@ proc call_page {{useenv ""} {createinterp 0}} {
 					$myinterp eval [list parse $targetfile]
 				} err]} {
 					$myinterp eval [list rivet_error]
-
-					$myinterp eval [list rivet_flush 1]
-
-					interp delete $myinterp
-					return
 				}
 
 				# Flush the output stream
-				$myinterp eval [list rivet_flush 1]
+				$myinterp eval [list rivet_flush -final]
+
+				# Determine result
+				set retval "close"
+				if {[$myinterp eval [list info exists ::rivet::connection]]} {
+					set retval [$myinterp eval [list set ::rivet::connection]]
+				}
 
 				interp delete $myinterp
 			} else {
@@ -185,17 +186,19 @@ proc call_page {{useenv ""} {createinterp 0}} {
 					parse $targetfile
 				} err]} {
 					rivet_error
-
-					rivet_flush 1
-
-					return
 				}
 
 				# Flush the output stream
-				rivet_flush 1
+				rivet_flush -final
+
+				# Determine result
+				set retval "close"
+				if {[info exists ::rivet::connection]} {
+					set retval $::rivet::connection
+				}
 			}
 	
-			return
+			return $retval
 		}
 		"*.ez" { set statictype "application/andrew-inset" }
 		"*.atom" { set statictype "application/atom+xml" }
@@ -724,7 +727,17 @@ proc call_page {{useenv ""} {createinterp 0}} {
 		}
 
 		close $fd
+
+		# Determine result
+		set retval "close"
+		if {[info exists ::rivet::connection]} {
+			set retval $::rivet::connection
+		}
+
+		return $retval
 	}
+
+	return "unknown"
 }
 
 proc print_help {} {
@@ -1365,9 +1378,9 @@ proc rivet_cgi_server_request_data {sock addr hostport logfd elogfd pmodel} {
 		# Call "call_page" with the new enivronment
 		if {[catch {
 			if {$pmodel == "flat"} {
-				call_page [array get myenv] 1
+				set result [call_page [array get myenv] 1]
 			} else {
-				call_page [array get myenv] 0
+				set result [call_page [array get myenv] 0]
 			}
 
 			if {$logfd != ""} {
@@ -1390,7 +1403,7 @@ proc rivet_cgi_server_request_data {sock addr hostport logfd elogfd pmodel} {
 		unset sockinfo
 		set sockinfo(state) NEW
 
-		if {$headers(CONNECTION) != "keep-alive"} {
+		if {$headers(CONNECTION) != "keep-alive" || $result != "keep-alive"} {
 			# Tell the event loop that we're done here.
 			set ::rivetstarkit::finished($sock) 1
 		} else {
