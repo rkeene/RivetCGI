@@ -21,7 +21,6 @@ proc call_page {{useenv ""} {createinterp 0}} {
 		set inchan [lindex $env(RIVET_INTERFACE) 1]
 		set outchan [lindex $env(RIVET_INTERFACE) 2]
 		set elogchan [lindex $env(RIVET_INTERFACE) 3]
-		array set headers [lindex $env(RIVET_INTERFACE) 4]
 	}
 
 	# Determine if a sub-file has been requested
@@ -35,12 +34,7 @@ proc call_page {{useenv ""} {createinterp 0}} {
 	if {[info exists env(PATH_INFO)]} {
 		set targetfile "$::starkit::topdir/$env(PATH_INFO)"
 	} else {
-		foreach chk_indexfile $indexfiles {
-			set targetfile [file join $::starkit::topdir $chk_indexfile]
-			if {[file exists $targetfile]} {
-				break
-			}
-		}
+		set targetfile [file join $::starkit::topdir]
 	}
 	
 	# If the file specified is a directory, look for an index
@@ -115,23 +109,16 @@ proc call_page {{useenv ""} {createinterp 0}} {
 			cd [file dirname $targetfile]
 
 			set env(SCRIPT_FILENAME) $targetfile
-			if {[info exists env(REQUEST_URI)]} {
-				set scriptfilenamework [lrange [file split $targetfile] 1 end]
-				set requesturiwork [lindex [split $env(REQUEST_URI) ?] 0]
-				set requesturiwork [split [string trim $requesturiwork /] /]
-				if {[llength $requesturiwork] == 0} {
-					set requesturiwork [list index.rvt]
-				}
-				for {set sfidx 0} {$sfidx < [llength $scriptfilenamework]} {incr sfidx} {
-					set endidx [expr $sfidx + [llength $requesturiwork] - 1]
-					set chklist [lrange $scriptfilenamework $sfidx $endidx]
-					if {$chklist == $requesturiwork} {
-						set env(SCRIPT_NAME) "/[join [lrange $scriptfilenamework $sfidx end] /]"
-						break
-					}
-				}
+
+			set topdir [string trimright $::starkit::topdir "/"]
+			set scriptname [string range $targetfile [string length $topdir] end]
+
+			if {[info exists env(SCRIPT_NAME)]} {
+				append env(SCRIPT_NAME) $scriptname
+			} else {
+				set env(SCRIPT_NAME) $scriptname
 			}
-	
+
 			if {$createinterp} {
 				set myinterp [interp create]
 
