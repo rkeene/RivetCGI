@@ -182,8 +182,8 @@ proc rivet_flush args {
 		}
 	}
 
-	if {[info exists ::rivet::transfer_encoding] && $::rivet::transfer_encoding == "chunked" && ![info exists ::rivet::sent_final_chunk]} {
-		if {$final_flush == "1"} {
+	if {$final_flush == "1"} {
+		if {[info exists ::rivet::transfer_encoding] && $::rivet::transfer_encoding == "chunked" && ![info exists ::rivet::sent_final_chunk]} {
 			fconfigure $outchan -translation "crlf"
 
 			tcl_puts $outchan "0"
@@ -283,27 +283,9 @@ proc rivet_puts args {
 		}
 	} else {
 		if {$fd == "stdout"} {
-			set str [lindex $args 0]$appendchar
-			set strlen [string length $str]
+			append ::rivet::output_buffer [lindex $args 0]$appendchar
 
-			if {!$::rivet::send_no_content && $strlen != "0"} {
-				if {[info exists ::rivet::transfer_encoding] && $::rivet::transfer_encoding == "chunked"} {
-					fconfigure $outchan -translation "crlf"
-
-					tcl_puts $outchan [format %x $strlen]
-				}
-
-				fconfigure $outchan -translation binary
-				tcl_puts -nonewline $outchan $str
-
-				if {[info exists ::rivet::transfer_encoding] && $::rivet::transfer_encoding == "chunked"} {
-					fconfigure $outchan -translation "crlf"
-
-					tcl_puts $outchan ""
-
-					fconfigure $outchan -translation binary
-				}
-			}
+			rivet_flush
 		} else {
 			tcl_puts -nonewline $fd [lindex $args 0]$appendchar
 		}
