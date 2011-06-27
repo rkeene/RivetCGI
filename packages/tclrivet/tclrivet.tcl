@@ -56,7 +56,7 @@ namespace eval rivet {
 		}
 
 		array set ::rivet::header_pairs {}
-		set ::rivet::header_type "text/html"
+		set ::rivet::header_pairs(content-type) "text/html"
 		set ::rivet::header_sent 0
 		set ::rivet::output_buffer ""
 		set ::rivet::send_no_content 0
@@ -148,18 +148,6 @@ proc rivet_flush args {
 
 		::rivet::cgi_server_writehttpheader $::rivet::statuscode
 
-		if {![info exists ::rivet::header_redirect]} {
-			tcl_puts $outchan "Content-type: $::rivet::header_type"
-			foreach {var val} [array get ::rivet::header_pairs] {
-				tcl_puts $outchan "$var: $val"
-			}
-		} else {
-			tcl_puts $outchan "Location: $::rivet::header_redirect"
-			tcl_puts $outchan ""
-			abort_page
-		}
-		tcl_puts $outchan ""
-
 		unset -nocomplain ::rivet::statuscode ::rivet::header_redirect ::rivet::header_pairs
 	}
 
@@ -247,12 +235,13 @@ proc rivet_error {} {
 
 	if {!$::rivet::header_sent} {
 		set ::rivet::header_sent 1
+
+		headers type "text/html"
+
 		::rivet::cgi_server_writehttpheader 200 [string length $errmsg]
-		tcl_puts $outchan "Content-type: text/html"
-		tcl_puts $outchan ""
-		tcl_puts -nonewline $outchan $errmsg
 	}
 
+	tcl_puts -nonewline $outchan $errmsg
 }
 
 proc rivet_puts args {
@@ -722,18 +711,18 @@ proc headers args {
 	set cmd [lindex $args 0]
 	switch -- $cmd {
 		"set" {
-			set var [lindex $args 1]
+			set var [string tolower [lindex $args 1]]
 			set val [lindex $args 2]
 			set ::rivet::header_pairs($var) $val
 		}
 		"add" {
-			set var [lindex $args 1]
+			set var [string tolower [lindex $args 1]]
 			set val [lindex $args 2]
 			append ::rivet::header_pairs($var) $val
 		}
 		"type" {
 			set val [lindex $args 1]
-			set ::rivet::header_type $val
+			set ::rivet::header_pairs(content-type) $val
 		}
 		"redirect" {
 			set val [lindex $args 1]
@@ -794,34 +783,56 @@ proc ::rivet::cgi_server_writehttpheader {statuscode {useenv ""} {length -1}} {
 
 			unset -nocomplain ::rivet::transfer_encoding
 
+			if {[info exists ::rivet::header_pairs(content-length)]} {
+				set out_contentlength $::rivet::header_pairs(content-length)
+
+				if {$length == "-1"} {
+					set length $out_contentlength
+				}
+			}
+
 			if {$headers(CONNECTION) == "keep-alive"} {
 				if {$length != -1} {
-					tcl_puts $outchan "Content-Length: $length"
-					tcl_puts $outchan "Connection: keep-alive"
+					set ::rivet::header_pairs(content-length) $length
+					set ::rivet::header_pairs(connection) "keep-alive"
+
 					set ::rivet::connection "keep-alive"
 				} else {
 					if {$statuscode == "200"} {
-						tcl_puts $outchan "Transfer-Encoding: chunked"
-						tcl_puts $outchan "Connection: keep-alive"
+						set ::rivet::header_pairs(transfer-encoding) "chunked"
+						set ::rivet::header_pairs(connection) "keep-alive"
+
 						set ::rivet::transfer_encoding "chunked"
 						set ::rivet::connection "keep-alive"
 					} else {
-						tcl_puts $outchan "Connection: close"
+						set ::rivet::header_pairs(connection) "close"
+
 						set ::rivet::connection "close"
 					}
 				}
 			} else {
-				tcl_puts $outchan "Connection: close"
+				set ::rivet::header_pairs(connection) "close"
+
 				set ::rivet::connection "close"
 			}
 
 			fconfigure $outchan -translation binary
-
-			return
 		}
+	} else {
+		tcl_puts $outchan "Status: $statuscode [::rivet::statuscode_to_str $statuscode]"
 	}
 
-	tcl_puts $outchan "Status: $statuscode [::rivet::statuscode_to_str $statuscode]"
+	if {![info exists ::rivet::header_redirect]} {
+		foreach {var val} [array get ::rivet::header_pairs] {
+			tcl_puts $outchan "$var: $val"
+		}
+	} else {
+		tcl_puts $outchan "Location: $::rivet::header_redirect"
+		tcl_puts $outchan ""
+		abort_page
+	}
+
+	tcl_puts $outchan ""
 }
 
 proc load_headers args { }

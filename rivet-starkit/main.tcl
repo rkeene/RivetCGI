@@ -83,20 +83,14 @@ proc call_page {{useenv ""} {createinterp 0}} {
 		if {$targetfile == "__RIVETSTARKIT_FORBIDDEN__"} {
 			# Return a 403 (Forbidden)
 			::rivet::cgi_server_writehttpheader 403 [array get env]
-			tcl_puts $outchan "Content-type: text/html"
-			tcl_puts $outchan ""
 			tcl_puts $outchan "<html><head><title>Forbidden</title></head><body><h1>File Access Forbidden</h1></body>"
 		} elseif {[file tail $targetfile] == "__RIVETSTARKIT_INDEX__"} {
 			# Return a 403 (Forbidden)
 			::rivet::cgi_server_writehttpheader 403 [array get env]
-			tcl_puts $outchan "Content-type: text/html"
-			tcl_puts $outchan ""
 			tcl_puts $outchan "<html><head><title>Directory Listing Forbidden</title></head><body><h1>Directory Listing Forbidden</h1></body>"
 		} else {
 			# Return a 404 (File Not Found)
 			::rivet::cgi_server_writehttpheader 404 [array get env]
-			tcl_puts $outchan "Content-type: text/html"
-			tcl_puts $outchan ""
 			tcl_puts $outchan "<html><head><title>File Not Found</title></head><body><h1>File Not Found</h1></body>"
 		}
 
@@ -122,18 +116,17 @@ proc call_page {{useenv ""} {createinterp 0}} {
 			if {$createinterp} {
 				set myinterp [interp create]
 
-				$myinterp eval [list set ::auto_path $::auto_path]
-				$myinterp eval [list package require tclrivet]
-				$myinterp eval [list unset -nocomplain ::env]
-				$myinterp eval [list array set ::env [array get env]]
-				$myinterp eval [list set ::rivet::parsestack [info script]]
-
-				foreach var [list ::starkit::topdir] {
+				foreach var [list ::starkit::topdir ::auto_path] {
 					if {[namespace qualifiers $var] != ""} {
 						$myinterp eval [list namespace eval [namespace qualifiers $var] ""]
 					}
 					$myinterp eval [list set $var [set $var]]
 				}
+
+				$myinterp eval [list package require tclrivet]
+				$myinterp eval [list unset -nocomplain ::env]
+				$myinterp eval [list array set ::env [array get env]]
+				$myinterp eval [list set ::rivet::parsestack [info script]]
 
 				if {$inchan != "stdin"} {
 					interp share {} $inchan $myinterp
@@ -696,24 +689,28 @@ proc call_page {{useenv ""} {createinterp 0}} {
 			set filelen [file size $targetfile]
 		}
 
+		headers type $statictype
+
+		catch {
+			headers set "Last-Modified" "[clock format [file mtime $targetfile] -format {%a, %d %b %Y %H:%M:%S GMT} -gmt 1]"
+
+			headers set "Expires" "Tue, 19 Jan 2038 03:14:07 GMT"
+		}
+
 		::rivet::cgi_server_writehttpheader 200 [array get env] $filelen
-		tcl_puts $outchan "Content-type: $statictype"
-		catch {
-			tcl_puts $outchan "Last-Modified: [clock format [file mtime $targetfile] -format {%a, %d %b %Y %H:%M:%S GMT} -gmt 1]"
-			tcl_puts $outchan "Expires: Tue, 19 Jan 2038 03:14:07 GMT"
-		}
-		tcl_puts $outchan ""
-	
-		set fd [open $targetfile r]
-		fconfigure $fd -encoding binary -translation {binary binary}
-		fconfigure $outchan -encoding binary -translation {binary binary}
 
-		# Do the copy in the foreground.
-		catch {
-			fcopy $fd $outchan
-		}
+		if {$filelen != "0"} {
+			set fd [open $targetfile r]
+			fconfigure $fd -encoding binary -translation {binary binary}
+			fconfigure $outchan -encoding binary -translation {binary binary}
 
-		close $fd
+			# Do the copy in the foreground.
+			catch {
+				fcopy $fd $outchan
+			}
+
+			close $fd
+		}
 
 		# Determine result
 		set retval "close"
