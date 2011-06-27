@@ -238,7 +238,7 @@ proc rivet_error {} {
 
 		headers type "text/html"
 
-		::rivet::cgi_server_writehttpheader 200 [string length $errmsg]
+		::rivet::cgi_server_writehttpheader 200 "" [string length $errmsg]
 	}
 
 	tcl_puts -nonewline $outchan $errmsg
