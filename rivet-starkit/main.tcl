@@ -838,6 +838,7 @@ proc rivet_cgi_server {addr ports foreground initscp logfile errorlogfile maxthr
 			set logfd ""
 		}
 		default {
+			set logfile [file join [file dirname [file dirname [info script]]] $logfile]
 			set logfd [open $logfile a]
 		}
 	}
@@ -853,6 +854,7 @@ proc rivet_cgi_server {addr ports foreground initscp logfile errorlogfile maxthr
 			}
 		}
 		default {
+			set errorlogfile [file join [file dirname [file dirname [info script]]] $errorlogfile]
 			set elogfd [open $errorlogfile a]
 		}
 	}
@@ -887,8 +889,11 @@ proc rivet_cgi_server {addr ports foreground initscp logfile errorlogfile maxthr
 				set val $sslopts($opt)
 
 				switch -- $opt {
-					"require" {
+					"require" - "request" {
 						set val [expr $val]
+					}
+					"certfile" - "keyfile" - "cafile" - "cadir" {
+						set val [file normalize [file join [file dirname [file dirname [info script]]] $val]]
 					}
 					default {
 						if {$val == ""} {
@@ -1421,14 +1426,17 @@ if {![info exists ::env(GATEWAY_INTERFACE)]} {
 		"--server" {
 			set conffile [file dirname [info script]]
 			append conffile ".conf"
-			if {[info exists $conffile]} {
+			if {[file exists $conffile]} {
+				set argv_conf [list]
 				catch {
 					set fd [open $conffile]
 
-					set argv [read -nonewline $fd]
+					set argv_conf [read -nonewline $fd]
 
 					close $fd
 				}
+
+				set argv [concat $argv_conf $argv]
 			}
 
 			set options(--address) "ALL"
