@@ -1419,7 +1419,7 @@ if {![info exists ::env(GATEWAY_INTERFACE)]} {
 
 	switch -- $cmd {
 		"--server" {
-			set conffile [file normalize [info nameofexe]]
+			set conffile [file dirname [info script]]
 			append conffile ".conf"
 			if {[info exists $conffile]} {
 				catch {
