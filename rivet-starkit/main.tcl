@@ -1361,6 +1361,7 @@ proc rivet_cgi_server_request_data {sock addr hostport logfd elogfd pmodel} {
 			}
 
 			# Call "call_page" with the new enivronment
+			set result "close"
 			if {[catch {
 				if {$pmodel == "flat"} {
 					set result [call_page [array get myenv] 1]
@@ -1377,9 +1378,10 @@ proc rivet_cgi_server_request_data {sock addr hostport logfd elogfd pmodel} {
 					tcl_puts $logfd "$addr - - \[[clock format [clock seconds] -format {%d/%b/%Y:%H:%M:%S %z}]\] \"$sockinfo(requestline)\" 500 0 \"-\" \"$ua\" \"Error: [join [split $err {"\n}]]\""
 					flush $logfd
 				}
+
 				if {$elogfd != ""} {
-					tcl_puts $elogfd "$err"
-					tcl_puts $elogfd "$::errorInfo"
+					tcl_puts $elogfd "($sock/$addr/[pid]) $err"
+					tcl_puts $elogfd "($sock/$addr/[pid]) $::errorInfo"
 					flush $elogfd
 				}
 			}
