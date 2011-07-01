@@ -1399,11 +1399,11 @@ proc rivet_cgi_server_request_data {sock addr hostport logfd elogfd pmodel} {
 		}
  
 		set ::rivetstarkit::sockinfo($sock) [array get sockinfo]
-	}]} {
+	}] == "1"} {
 		# In case of error, abort.
 		set ::rivetstarkit::finished($sock) 1
 		if {$elogfd != ""} {
-			tcl_puts $elogfd "$::errorInfo"
+			tcl_puts $elogfd "($sock/$addr/[pid]) $::errorInfo"
 			flush $elogfd
 		}
 	}
