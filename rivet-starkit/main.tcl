@@ -1103,9 +1103,9 @@ proc rivet_cgi_server_request {hostport logfd elogfd pmodel maxthreads httpmode 
 
 		vwait ::rivetstarkit::finished($sock)
 
-		catch {
-			unset -nocomplain ::rivet_cgi_tls_verified($sock)
+		unset -nocomplain ::rivet_cgi_tls_verified($sock)
 
+		catch {
 			close $sock
 		}
 	} err]} {
@@ -1134,270 +1134,279 @@ proc rivet_cgi_server_request {hostport logfd elogfd pmodel maxthreads httpmode 
 }
 
 proc rivet_cgi_server_request_data {sock addr hostport logfd elogfd pmodel} {
-	array set sockinfo $::rivetstarkit::sockinfo($sock)
+	if {[catch {
+		array set sockinfo $::rivetstarkit::sockinfo($sock)
 
-	gets $sock line
-	set line [string trimright $line "\r\n"]
+		gets $sock line
+		set line [string trimright $line "\r\n"]
 
-	if {$line == "" && [eof $sock]} {
-		# Tell the event loop that we're done here.
-		set ::rivetstarkit::finished($sock) 1
-
-		return
-	}
-
-	switch -- $sockinfo(state) {
-		"NEW" {
-			set sockinfo(requestline) $line
-			set work [split $line " "]
-
-			set sockinfo(method) [string toupper [lindex $work 0]]
-
-			if {[llength $work] == 2} {
-				set sockinfo(url) [lindex $work 1]
-				set sockinfo(httpproto) "HTTP/1.0"
-			} else {
-				set sockinfo(url) [join [lrange $work 1 end-1] " "]
-				set sockinfo(httpproto) [string toupper [lindex $work end]]
-			}
-
-			set sockinfo(state) HEADERS
-
-			set sockinfo(url) [regsub {http://[^/]*/} $sockinfo(url) {/}]
-
-			set work [split $sockinfo(url) ?]
-			set sockinfo(path) [lindex $work 0]
-			if {[llength $work] > 1} {
-				set sockinfo(query) [join [lrange $work 1 end] ?]
-			}
-
-			# We only support GET and POST, everyone else we just close on.
-			if {$sockinfo(method) != "GET" && $sockinfo(method) != "POST"} {
-				set ::rivetstarkit::finished($sock) 1
-
-				unset -nocomplain ::rivet_cgi_tls_verified($sock)
-
-				close $sock
-			}
-		}
-		"HEADERS" {
-			if {$line == ""} {
-				set sockinfo(state) HANDLEREQUEST
-			} else {
-				set work [split $line :]
-				set headervar [string toupper [lindex $work 0]]
-				set headerval [string trim [join [lrange $work 1 end] :]]
-				lappend sockinfo(headers) $headervar $headerval
-			}
-		}
-	}
-
-	if {$sockinfo(state) == "HANDLEREQUEST"} {
-		if {[info exists sockinfo(headers)]} {
-			array set headers $sockinfo(headers)
-		} else {
-			array set headers [list]
-		}
-
-		# Write log entry
-		if {[info exists headers(USER-AGENT)]} {
-			set ua $headers(USER-AGENT)
-		} else {
-			set ua "-"
-		}
-
-		fileevent $sock readable ""
-
-		set localinfo [fconfigure $sock -sockname]
-		if {![info exists headers(CONNECTION)]} {
-			switch -- $sockinfo(httpproto) {
-				"HTTP/1.1" {
-					set headers(CONNECTION) "keep-alive"
-				}
-				default {
-					set headers(CONNECTION) "close"
-				}
-			}
-		} else {
-			set headers(CONNECTION) [string tolower $headers(CONNECTION)]
-		}
-
-		if {![info exists headers(HOST)]} {
-			set headers(HOST) [lindex $localinfo 1]
-		}
-
-		# Create CGI/1.1 compatible environment
-		## Standard variables
-		set myenv(GATEWAY_INTERFACE) "CGI/1.1"
-		set myenv(SERVER_SOFTWARE) "Rivet Starkit"
-		set myenv(SERVER_NAME) [lindex [split $headers(HOST) :] 0]
-		set myenv(SERVER_PROTOCOL) $sockinfo(httpproto)
-		set myenv(SERVER_PORT) $hostport
-		set myenv(REQUEST_METHOD) $sockinfo(method)
-		set myenv(REMOTE_ADDR) $addr
-		set myenv(PATH_INFO) $sockinfo(path)
-		if {[info exists sockinfo(query)]} {
-			set myenv(QUERY_STRING) $sockinfo(query)
-		}
-		### Post requests have additional information
-		if {$sockinfo(method) == "POST"} {
-			if {[info exists headers(CONTENT-TYPE)]} {
-				set myenv(CONTENT_TYPE) $headers(CONTENT-TYPE)
-			}
-			if {[info exists headers(CONTENT-LENGTH)]} {
-				set myenv(CONTENT_LENGTH) $headers(CONTENT-LENGTH)
-			}
-		}
-		## Additional variables
-		set myenv(REQUEST_URI) $sockinfo(url)
-		set myenv(SERVER_ADDR) [lindex $localinfo 0]
-		set myenv(DOCUMENT_ROOT) $::starkit::topdir
-		if {[info exists headers(ACCEPT)]} {
-			set myenv(HTTP_ACCEPT) $headers(ACCEPT)
-		}
-		if {[info exists headers(USER-AGENT)]} {
-			set myenv(HTTP_USER_AGENT) $headers(USER-AGENT)
-		}
-		if {[info exists headers(REFERER)]} {
-			set myenv(HTTP_REFERER) $headers(REFERER)
-		}
-		## Cookies
-		if {[info exists headers(COOKIE)]} {
-			set myenv(HTTP_COOKIE) $headers(COOKIE)
-		}
-		## Copy some environment variables directly
-		if {[info exists ::env(SERVER_ADMIN)]} {
-			set myenv(SERVER_ADMIN) $::env(SERVER_ADMIN)
-		}
-		if {[info exists ::env(PATH)]} {
-			set myenv(PATH) $::env(PATH)
-		}
-
-		# Add Rivet Interface specification to fake environment, so further
-		# Rivet/CGI knows how to interface
-		set myenv(RIVET_INTERFACE) [list FULLHEADERS $sock $sock $elogfd [array get headers]]
-
-		# Set TLS Socket Info
-		array set tlsinfo_peer [list sbits 0]
-		array set tlsinfo_local [list sbits 0]
-		catch {
-			array set tlsinfo_peer [tls::status $sock]
-
-		}
-		catch {
-			array set tlsinfo_local [tls::status -local $sock]
-		}
-
-		## Set TLS client CGI Variables
-		if {$tlsinfo_peer(sbits) != 0} {
-			set myenv(HTTPS) on
-
-			if {![info exists ::rivet_cgi_tls_verified($sock)]} {
-				set ::rivet_cgi_tls_verified($sock) 0
-			}
-
-			if {$::rivet_cgi_tls_verified($sock) == "1"} {
-				set myenv(SSL_CLIENT_VERIFY) SUCCESS
-			} else {
-				unset -nocomplain myenv(SSL_CLIENT_VERIFY)
-			}
-
-			foreach {myenvvar tlsvar} [list SSL_CLIENT_S_DN subject SSL_CLIENT_I_DN issuer SSL_CLIENT_V_START notBefore SSL_CLIENT_V_END notAfter SSL_CLIENT_M_SERIAL serial SSL_CIPHER cipher SSL_CIPHER_USEKEYSIZE sbits] {
-				if {![info exists tlsinfo_peer($tlsvar)]} {
-					continue
-				}
-
-				set myenv($myenvvar) $tlsinfo_peer($tlsvar)
-			}
-		}
-
-		## Set TLS server CGI Variables
-		if {$tlsinfo_local(sbits) != 0} {
-			set myenv(HTTPS) on
-
-			foreach {myenvvar tlsvar} [list SSL_SERVER_S_DN subject SSL_SERVER_I_DN issuer SSL_SERVER_V_START notBefore SSL_SERVER_V_END notAfter SSL_SERVER_M_SERIAL serial SSL_CIPHER cipher SSL_CIPHER_USEKEYSIZE sbits] {
-				if {![info exists tlsinfo_local($tlsvar)]} {
-					continue
-				}
-
-				set myenv($myenvvar) $tlsinfo_local($tlsvar)
-			}
-		}
-
-		## Set TLS client/server X.509 component CGI variables
-		foreach locationvar [list tlsinfo_peer tlsinfo_local] {
-			switch -- $locationvar {
-				"tlsinfo_peer" {
-					set locationcgivar "CLIENT"
-				}
-				"tlsinfo_local" {
-					set locationcgivar "SERVER"
-				}
-			}
-
-			foreach type [list subject issuer] {
-				if {![info exists [set locationvar]($type)]} {
-					continue
-				}
-				switch -- $type {
-					"subject" {
-						set typecgivar "S"
-					}
-					"issuer" {
-						set typecgivar "I"
-					}
-				}
-
-				set curr_dn [set [set locationvar]($type)]
-				foreach component [split $curr_dn ,] {
-					set component_work [split $component =]
-					set component_name [string trim [string toupper [lindex $component_work 0]]]
-					set component_val [string trim [join [lrange $component_work 1 end] =]]
-
-					set myenv(SSL_${locationcgivar}_${typecgivar}_DN_${component_name}) $component_val
-				}
-			}
-		}
-
-		# Call "call_page" with the new enivronment
-		if {[catch {
-			if {$pmodel == "flat"} {
-				set result [call_page [array get myenv] 1]
-			} else {
-				set result [call_page [array get myenv] 0]
-			}
-
-			if {$logfd != ""} {
-				tcl_puts $logfd "$addr - - \[[clock format [clock seconds] -format {%d/%b/%Y:%H:%M:%S %z}]\] \"$sockinfo(requestline)\" 200 0 \"-\" \"$ua\""
-				flush $logfd
-			}
-		} err]} {
-			if {$logfd != ""} {
-				tcl_puts $logfd "$addr - - \[[clock format [clock seconds] -format {%d/%b/%Y:%H:%M:%S %z}]\] \"$sockinfo(requestline)\" 500 0 \"-\" \"$ua\" \"Error: [join [split $err {"\n}]]\""
-				flush $logfd
-			}
-			if {$elogfd != ""} {
-				tcl_puts $elogfd "$err"
-				tcl_puts $elogfd "$::errorInfo"
-				flush $elogfd
-			}
-		}
-
-		# Cleanup
-		unset sockinfo
-		set sockinfo(state) NEW
-
-		if {$headers(CONNECTION) != "keep-alive" || $result != "keep-alive"} {
+		if {$line == "" && [eof $sock]} {
 			# Tell the event loop that we're done here.
 			set ::rivetstarkit::finished($sock) 1
-		} else {
-			fconfigure $sock -buffering line
-			fconfigure $sock -translation crlf
-			fileevent $sock readable [list rivet_cgi_server_request_data $sock $addr $hostport $logfd $elogfd $pmodel]
+
+			return
+		}
+
+		switch -- $sockinfo(state) {
+			"NEW" {
+				set sockinfo(requestline) $line
+				set work [split $line " "]
+
+				set sockinfo(method) [string toupper [lindex $work 0]]
+
+				if {[llength $work] == 2} {
+					set sockinfo(url) [lindex $work 1]
+					set sockinfo(httpproto) "HTTP/1.0"
+				} else {
+					set sockinfo(url) [join [lrange $work 1 end-1] " "]
+					set sockinfo(httpproto) [string toupper [lindex $work end]]
+				}
+
+				set sockinfo(state) HEADERS
+
+				set sockinfo(url) [regsub {http://[^/]*/} $sockinfo(url) {/}]
+
+				set work [split $sockinfo(url) ?]
+				set sockinfo(path) [lindex $work 0]
+				if {[llength $work] > 1} {
+					set sockinfo(query) [join [lrange $work 1 end] ?]
+				}
+
+				# We only support GET and POST, everyone else we just close on.
+				if {$sockinfo(method) != "GET" && $sockinfo(method) != "POST"} {
+					set ::rivetstarkit::finished($sock) 1
+
+					unset -nocomplain ::rivet_cgi_tls_verified($sock)
+
+					close $sock
+				}
+			}
+			"HEADERS" {
+				if {$line == ""} {
+					set sockinfo(state) HANDLEREQUEST
+				} else {
+					set work [split $line :]
+					set headervar [string toupper [lindex $work 0]]
+					set headerval [string trim [join [lrange $work 1 end] :]]
+					lappend sockinfo(headers) $headervar $headerval
+				}
+			}
+		}
+
+		if {$sockinfo(state) == "HANDLEREQUEST"} {
+			if {[info exists sockinfo(headers)]} {
+				array set headers $sockinfo(headers)
+			} else {
+				array set headers [list]
+			}
+
+			# Write log entry
+			if {[info exists headers(USER-AGENT)]} {
+				set ua $headers(USER-AGENT)
+			} else {
+				set ua "-"
+			}
+
+			fileevent $sock readable ""
+
+			set localinfo [fconfigure $sock -sockname]
+			if {![info exists headers(CONNECTION)]} {
+				switch -- $sockinfo(httpproto) {
+					"HTTP/1.1" {
+						set headers(CONNECTION) "keep-alive"
+					}
+					default {
+						set headers(CONNECTION) "close"
+					}
+				}
+			} else {
+				set headers(CONNECTION) [string tolower $headers(CONNECTION)]
+			}
+
+			if {![info exists headers(HOST)]} {
+				set headers(HOST) [lindex $localinfo 1]
+			}
+
+			# Create CGI/1.1 compatible environment
+			## Standard variables
+			set myenv(GATEWAY_INTERFACE) "CGI/1.1"
+			set myenv(SERVER_SOFTWARE) "Rivet Starkit"
+			set myenv(SERVER_NAME) [lindex [split $headers(HOST) :] 0]
+			set myenv(SERVER_PROTOCOL) $sockinfo(httpproto)
+			set myenv(SERVER_PORT) $hostport
+			set myenv(REQUEST_METHOD) $sockinfo(method)
+			set myenv(REMOTE_ADDR) $addr
+			set myenv(PATH_INFO) $sockinfo(path)
+			if {[info exists sockinfo(query)]} {
+				set myenv(QUERY_STRING) $sockinfo(query)
+			}
+			### Post requests have additional information
+			if {$sockinfo(method) == "POST"} {
+				if {[info exists headers(CONTENT-TYPE)]} {
+					set myenv(CONTENT_TYPE) $headers(CONTENT-TYPE)
+				}
+				if {[info exists headers(CONTENT-LENGTH)]} {
+					set myenv(CONTENT_LENGTH) $headers(CONTENT-LENGTH)
+				}
+			}
+			## Additional variables
+			set myenv(REQUEST_URI) $sockinfo(url)
+			set myenv(SERVER_ADDR) [lindex $localinfo 0]
+			set myenv(DOCUMENT_ROOT) $::starkit::topdir
+			if {[info exists headers(ACCEPT)]} {
+				set myenv(HTTP_ACCEPT) $headers(ACCEPT)
+			}
+			if {[info exists headers(USER-AGENT)]} {
+				set myenv(HTTP_USER_AGENT) $headers(USER-AGENT)
+			}
+			if {[info exists headers(REFERER)]} {
+				set myenv(HTTP_REFERER) $headers(REFERER)
+			}
+			## Cookies
+			if {[info exists headers(COOKIE)]} {
+				set myenv(HTTP_COOKIE) $headers(COOKIE)
+			}
+			## Copy some environment variables directly
+			if {[info exists ::env(SERVER_ADMIN)]} {
+				set myenv(SERVER_ADMIN) $::env(SERVER_ADMIN)
+			}
+			if {[info exists ::env(PATH)]} {
+				set myenv(PATH) $::env(PATH)
+			}
+
+			# Add Rivet Interface specification to fake environment, so further
+			# Rivet/CGI knows how to interface
+			set myenv(RIVET_INTERFACE) [list FULLHEADERS $sock $sock $elogfd [array get headers]]
+
+			# Set TLS Socket Info
+			array set tlsinfo_peer [list sbits 0]
+			array set tlsinfo_local [list sbits 0]
+			catch {
+				array set tlsinfo_peer [tls::status $sock]
+
+			}
+			catch {
+				array set tlsinfo_local [tls::status -local $sock]
+			}
+
+			## Set TLS client CGI Variables
+			if {$tlsinfo_peer(sbits) != 0} {
+				set myenv(HTTPS) on
+
+				if {![info exists ::rivet_cgi_tls_verified($sock)]} {
+					set ::rivet_cgi_tls_verified($sock) 0
+				}
+
+				if {$::rivet_cgi_tls_verified($sock) == "1"} {
+					set myenv(SSL_CLIENT_VERIFY) SUCCESS
+				} else {
+					unset -nocomplain myenv(SSL_CLIENT_VERIFY)
+				}
+
+				foreach {myenvvar tlsvar} [list SSL_CLIENT_S_DN subject SSL_CLIENT_I_DN issuer SSL_CLIENT_V_START notBefore SSL_CLIENT_V_END notAfter SSL_CLIENT_M_SERIAL serial SSL_CIPHER cipher SSL_CIPHER_USEKEYSIZE sbits] {
+					if {![info exists tlsinfo_peer($tlsvar)]} {
+						continue
+					}
+
+					set myenv($myenvvar) $tlsinfo_peer($tlsvar)
+				}
+			}
+
+			## Set TLS server CGI Variables
+			if {$tlsinfo_local(sbits) != 0} {
+				set myenv(HTTPS) on
+
+				foreach {myenvvar tlsvar} [list SSL_SERVER_S_DN subject SSL_SERVER_I_DN issuer SSL_SERVER_V_START notBefore SSL_SERVER_V_END notAfter SSL_SERVER_M_SERIAL serial SSL_CIPHER cipher SSL_CIPHER_USEKEYSIZE sbits] {
+					if {![info exists tlsinfo_local($tlsvar)]} {
+						continue
+					}
+
+					set myenv($myenvvar) $tlsinfo_local($tlsvar)
+				}
+			}
+
+			## Set TLS client/server X.509 component CGI variables
+			foreach locationvar [list tlsinfo_peer tlsinfo_local] {
+				switch -- $locationvar {
+					"tlsinfo_peer" {
+						set locationcgivar "CLIENT"
+					}
+					"tlsinfo_local" {
+						set locationcgivar "SERVER"
+					}
+				}
+
+				foreach type [list subject issuer] {
+					if {![info exists [set locationvar]($type)]} {
+						continue
+					}
+					switch -- $type {
+						"subject" {
+							set typecgivar "S"
+						}
+						"issuer" {
+							set typecgivar "I"
+						}
+					}
+
+					set curr_dn [set [set locationvar]($type)]
+					foreach component [split $curr_dn ,] {
+						set component_work [split $component =]
+						set component_name [string trim [string toupper [lindex $component_work 0]]]
+						set component_val [string trim [join [lrange $component_work 1 end] =]]
+
+						set myenv(SSL_${locationcgivar}_${typecgivar}_DN_${component_name}) $component_val
+					}
+				}
+			}
+
+			# Call "call_page" with the new enivronment
+			if {[catch {
+				if {$pmodel == "flat"} {
+					set result [call_page [array get myenv] 1]
+				} else {
+					set result [call_page [array get myenv] 0]
+				}
+
+				if {$logfd != ""} {
+					tcl_puts $logfd "$addr - - \[[clock format [clock seconds] -format {%d/%b/%Y:%H:%M:%S %z}]\] \"$sockinfo(requestline)\" 200 0 \"-\" \"$ua\""
+					flush $logfd
+				}
+			} err]} {
+				if {$logfd != ""} {
+					tcl_puts $logfd "$addr - - \[[clock format [clock seconds] -format {%d/%b/%Y:%H:%M:%S %z}]\] \"$sockinfo(requestline)\" 500 0 \"-\" \"$ua\" \"Error: [join [split $err {"\n}]]\""
+					flush $logfd
+				}
+				if {$elogfd != ""} {
+					tcl_puts $elogfd "$err"
+					tcl_puts $elogfd "$::errorInfo"
+					flush $elogfd
+				}
+			}
+
+			# Cleanup
+			unset sockinfo
+			set sockinfo(state) NEW
+
+			if {$headers(CONNECTION) != "keep-alive" || $result != "keep-alive"} {
+				# Tell the event loop that we're done here.
+				set ::rivetstarkit::finished($sock) 1
+			} else {
+				fconfigure $sock -buffering line
+				fconfigure $sock -translation crlf
+				fileevent $sock readable [list rivet_cgi_server_request_data $sock $addr $hostport $logfd $elogfd $pmodel]
+			}
+		}
+ 
+		set ::rivetstarkit::sockinfo($sock) [array get sockinfo]
+	}]} {
+		# In case of error, abort.
+		set ::rivetstarkit::finished($sock) 1
+		if {$elogfd != ""} {
+			tcl_puts $elogfd "$::errorInfo"
+			flush $elogfd
 		}
 	}
- 
-	set ::rivetstarkit::sockinfo($sock) [array get sockinfo]
 }
 
 
@@ -1408,6 +1417,18 @@ if {![info exists ::env(GATEWAY_INTERFACE)]} {
 
 	switch -- $cmd {
 		"--server" {
+			set conffile [file normalize [info nameofexe]]
+			append conffile ".conf"
+			if {[info exists $conffile]} {
+				catch {
+					set fd [open $conffile]
+
+					set argv [read -nonewline $fd]
+
+					close $fd
+				}
+			}
+
 			set options(--address) "ALL"
 			set options(--port) 80
 			set options(--foreground) no
