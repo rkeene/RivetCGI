@@ -16,7 +16,14 @@ fi
 CFLAGS="-DUSE_TCL_STUBS=1 ${TCL_CFLAGS_OPTIMIZE} ${TCL_EXTRA_CFLAGS} ${TCL_INCLUDE_SPEC} ${TCL_SHLIB_CFLAGS}"
 LDFLAGS="$(eval echo "${TCL_LDFLAGS_OPTIMIZE} ${TCL_STUB_LIB_SPEC}")"
 
-eval echo "${TCL_SHLIB_LD}" -o "\"${OUTFILE}\"" parserPkgInit.c rivetParser.c
-eval "${TCL_SHLIB_LD}" -o "\"${OUTFILE}\"" parserPkgInit.c rivetParser.c || exit $?
+retval=1
+for tryadd in '' '-static-libgcc'; do
+	eval echo "${TCL_SHLIB_LD}" "${CFLAGS}" "${LDFLAGS}" "${tryadd}" -o "\"${OUTFILE}\"" parserPkgInit.c rivetParser.c
+	eval "${TCL_SHLIB_LD}" "${CFLAGS}" "${LDFLAGS}" "${tryadd}" -o "\"${OUTFILE}\"" parserPkgInit.c rivetParser.c || continue
 
-exit 0
+	retval=0
+
+	break
+done
+
+exit "${retval}"
