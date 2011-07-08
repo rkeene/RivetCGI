@@ -29,7 +29,7 @@ UPDATE_VARS="rivet-starkit/main.tcl"
 
 # This script is executed immediately after copying the files
 # to a temp directory to attempt to compile
-BEFORE=""
+BEFORE="build/pre.sh"
 
 # This script is executed immediately prior to creation of the
 # tarball

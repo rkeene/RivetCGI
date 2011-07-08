@@ -1,0 +1,19 @@
+#! /bin/bash
+
+source "$(find "${TCLCONFIGPATH}" /usr/lib /usr/local/lib -name 'tclConfig.sh' 2>/dev/null | head -1)"
+
+TCLSH="${TCLSH:-tclsh}"
+LIBFILE="librivetparser${TCL_SHLIB_SUFFIX}"
+
+if [ -z "${INSTALL_PLATFORM}" ]; then
+	INSTALL_PLATFORM="$(echo 'package require platform; puts [::platform::generic]' | "${TCLSH}")"
+fi
+
+INSTALLDIR="../${INSTALL_PLATFORM}"
+
+mkdir -p "${INSTALLDIR}" || exit 1
+
+echo cp "\"${LIBFILE}\"" "\"${INSTALLDIR}/\"" || exit 1
+cp "${LIBFILE}" "${INSTALLDIR}/" || exit 1
+
+exit 0

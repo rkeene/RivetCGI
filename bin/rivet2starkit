@@ -72,6 +72,7 @@ mkdir "${TMPVFSDIR}/lib" >/dev/null 2>/dev/null
 rm -rf "${TMPVFSDIR}/rivet-tcl"
 cp -rp "${OURDIR}/../packages"/tclrivet "${TMPVFSDIR}/lib/"
 cp -rp "${OURDIR}/../rivet-tcl" "${TMPVFSDIR}/"
+cp -rp "${OURDIR}/../lib"/*-* "${TMPVFSDIR}/lib/" >/dev/null 2>/dev/null
 
 # Add "Deny from all" .htaccess files where needed
 echo "Deny from all" > "${TMPVFSDIR}/lib/.htaccess"

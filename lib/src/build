@@ -1,0 +1,22 @@
+#! /bin/bash
+
+source "$(find "${TCLCONFIGPATH}" /usr/lib /usr/local/lib -name 'tclConfig.sh' 2>/dev/null | head -1)"
+
+OUTFILE="librivetparser${TCL_SHLIB_SUFFIX}"
+
+if [ "$1" = "clean" -o "$1" = "distclean" ]; then
+	rm -f "${OUTFILE}"
+
+	exit 0
+fi
+
+if [ -z "${CC}" ]; then
+	CC="${TCL_CC}"
+fi
+CFLAGS="-DUSE_TCL_STUBS=1 ${TCL_CFLAGS_OPTIMIZE} ${TCL_EXTRA_CFLAGS} ${TCL_INCLUDE_SPEC} ${TCL_SHLIB_CFLAGS}"
+LDFLAGS="$(eval echo "${TCL_LDFLAGS_OPTIMIZE} ${TCL_STUB_LIB_SPEC}")"
+
+eval echo "${TCL_SHLIB_LD}" -o "\"${OUTFILE}\"" parserPkgInit.c rivetParser.c
+eval "${TCL_SHLIB_LD}" -o "\"${OUTFILE}\"" parserPkgInit.c rivetParser.c || exit $?
+
+exit 0

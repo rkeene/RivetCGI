@@ -19,8 +19,10 @@
 
 package provide tclrivet 0.1
 
+
 if {[catch {
-	load [file join [file dirname [info script]] .. .. lib [string tolower $::tcl_platform(os)] [string tolower $::tcl_platform(machine)] librivetparser[info sharedlibextension]]
+	package require platform
+	load [file join [file dirname [info script]] .. .. lib [::platform::generic] librivetparser[info sharedlibextension]]
 	set ::librivetparser_loaded 1
 } tclRivetLoadError]} {
 	if {![info exists ::tclrivetparser_loaded]} {
