@@ -724,6 +724,18 @@ proc call_page {{useenv ""} {createinterp 0}} {
 	return "unknown"
 }
 
+proc ::rivetstarkit::puts_log {logfd msg} {
+	if {$logfd == ""} {
+		return
+	}
+
+	catch {
+		tcl_puts $logfd $msg
+
+		flush $logfd
+	}
+}
+
 proc print_help {} {
 	tcl_puts "Usage: [file tail [info nameofexecutable]] {--server \[--address <address>\]"
 	tcl_puts "       \[--port <port>\] \[--foreground {yes|no}\] \[--init <scp>\]"
@@ -758,9 +770,7 @@ proc rivet_cgi_tls_callback {logfd elogfd mode args} {
 		"error" {
 			foreach {chan msg} $args break
 
-			if {$elogfd != ""} {
-				tcl_puts $elogfd "($chan) TLS error: $msg"
-			}
+			::rivetstarkit::puts_log $elogfd "($chan) TLS error: $msg"
 
 			return 1
 		}
@@ -775,9 +785,7 @@ proc rivet_cgi_tls_callback {logfd elogfd mode args} {
 			if {$rc != "1"} {
 				# Do not note that this certificate is valid, but return OK
 
-				if {$elogfd != ""} {
-					tcl_puts $elogfd "($chan) Invalid cert $cert: $err"
-				}
+				::rivetstarkit::puts_log $elogfd "($chan) Invalid cert $cert: $err"
 
 				set ::rivet_cgi_tls_verified($chan) 0
 
@@ -996,7 +1004,7 @@ proc rivet_cgi_server_request {hostport logfd elogfd pmodel maxthreads httpmode 
 			unset -nocomplain threadId
 			foreach {thread isInUse} [array get ::rivetstarkit::threadinfo] {
 				if {!$isInUse} {
-					tcl_puts $elogfd "Using existing thread: $thread"
+					::rivetstarkit::puts_log $elogfd "Using existing thread: $thread"
 
 					set threadId $thread
 					break
@@ -1007,7 +1015,7 @@ proc rivet_cgi_server_request {hostport logfd elogfd pmodel maxthreads httpmode 
 			if {![info exists threadId]} {
 				set numthreads [llength [thread::names]]
 				if {$numthreads > $maxthreads} {
-					tcl_puts $elogfd "Exceeded maximum number of threads ($maxthreads): $numthreads, closing socket!"
+					::rivetstarkit::puts_log $elogfd "Exceeded maximum number of threads ($maxthreads): $numthreads, closing socket!"
 
 					unset -nocomplain ::rivet_cgi_tls_verified($sock)
 
@@ -1021,7 +1029,7 @@ proc rivet_cgi_server_request {hostport logfd elogfd pmodel maxthreads httpmode 
 			if {![info exists threadId]} {
 				# Create an empty interpreter in a new thread
 				set threadId [thread::create]
-				tcl_puts $elogfd "Creating thread: $threadId"
+				::rivetstarkit::puts_log $elogfd "Creating thread: $threadId"
 
 				# Load the needed packages in the new thread
 				thread::send $threadId [list package require tclrivet]
@@ -1046,7 +1054,7 @@ proc rivet_cgi_server_request {hostport logfd elogfd pmodel maxthreads httpmode 
 				}
 
 				# Copy the appropriate procedures to the new thread
-				foreach proc [list rivet_cgi_server_request_data rivet_cgi_server_request call_page] {
+				foreach proc [list rivet_cgi_server_request_data rivet_cgi_server_request call_page ::rivetstarkit::puts_log] {
 					if {[namespace qualifiers $var] != ""} {
 						thread::send $threadId [list namespace eval [namespace qualifiers $var] ""]
 					}
@@ -1063,7 +1071,7 @@ proc rivet_cgi_server_request {hostport logfd elogfd pmodel maxthreads httpmode 
 					thread::send $threadId [list proc $proc $procargs [info body $proc]]
 				}
 
-				tcl_puts $elogfd " ... done creating thread ($threadId)"
+				::rivetstarkit::puts_log $elogfd " ... done creating thread ($threadId)"
 			}
 
 			# Mark the specified thread as in-use
@@ -1080,9 +1088,10 @@ proc rivet_cgi_server_request {hostport logfd elogfd pmodel maxthreads httpmode 
 			# Transfer the socket to the thread, and specify our thread Id
 			thread::transfer $threadId $sock
 
-			tcl_puts $elogfd "Calling child thread to handle request ($threadId) in background"
+			::rivetstarkit::puts_log $elogfd "Calling child thread to handle request ($threadId) in background"
 			thread::send -async $threadId [list rivet_cgi_server_request $hostport "" "" "thread-child" 0 $httpmode $sock $addr $port [thread::id]]
-			tcl_puts $elogfd " ... done ($threadId)."
+			::rivetstarkit::puts_log $elogfd " ... done ($threadId)."
+
 			return
 		}
 		"thread-child" {
@@ -1114,9 +1123,7 @@ proc rivet_cgi_server_request {hostport logfd elogfd pmodel maxthreads httpmode 
 			close $sock
 		}
 	} err]} {
-		if {$elogfd != ""} {
-			tcl_puts $elogfd "Error while installing callback: \"$err\""
-		}
+		::rivetstarkit::puts_log $elogfd "Error while installing callback: \"$err\""
 	}
 
 	switch -- $pmodel {
@@ -1125,15 +1132,11 @@ proc rivet_cgi_server_request {hostport logfd elogfd pmodel maxthreads httpmode 
 		}
 		"thread" {
 			# Mark the thread as free
-			if {$elogfd != ""} {
-				tcl_puts $elogfd "Marking thread as free ([thread::id])"
-			}
+			::rivetstarkit::puts_log $elogfd "Marking thread as free ([thread::id])"
 
 			thread::send -async $parentThreadId [list set ::rivetstarkit::threadinfo([thread::id]) 0]
 
-			if {$elogfd != ""} {
-				tcl_puts $elogfd " ... done ([thread::id])."
-			}
+			::rivetstarkit::puts_log $elogfd " ... done ([thread::id])."
 		}
 	}
 }
@@ -1374,21 +1377,12 @@ proc rivet_cgi_server_request_data {sock addr hostport logfd elogfd pmodel} {
 					set result [call_page [array get myenv] 0]
 				}
 
-				if {$logfd != ""} {
-					tcl_puts $logfd "$addr - - \[[clock format [clock seconds] -format {%d/%b/%Y:%H:%M:%S %z}]\] \"$sockinfo(requestline)\" 200 0 \"-\" \"$ua\""
-					flush $logfd
-				}
+				::rivetstarkit::puts_log $logfd "$addr - - \[[clock format [clock seconds] -format {%d/%b/%Y:%H:%M:%S %z}]\] \"$sockinfo(requestline)\" 200 0 \"-\" \"$ua\""
 			} err]} {
-				if {$logfd != ""} {
-					tcl_puts $logfd "$addr - - \[[clock format [clock seconds] -format {%d/%b/%Y:%H:%M:%S %z}]\] \"$sockinfo(requestline)\" 500 0 \"-\" \"$ua\" \"Error: [join [split $err {"\n}]]\""
-					flush $logfd
-				}
+				::rivetstarkit::puts_log $logfd "$addr - - \[[clock format [clock seconds] -format {%d/%b/%Y:%H:%M:%S %z}]\] \"$sockinfo(requestline)\" 500 0 \"-\" \"$ua\" \"Error: [join [split $err {"\n}]]\""
 
-				if {$elogfd != ""} {
-					tcl_puts $elogfd "($sock/$addr/[pid]) $err"
-					tcl_puts $elogfd "($sock/$addr/[pid]) $::errorInfo"
-					flush $elogfd
-				}
+				::rivetstarkit::puts_log $elogfd "($sock/$addr/[pid]) $err"
+				::rivetstarkit::puts_log $elogfd "($sock/$addr/[pid]) $::errorInfo"
 			}
 
 			# Cleanup
@@ -1409,10 +1403,7 @@ proc rivet_cgi_server_request_data {sock addr hostport logfd elogfd pmodel} {
 	}] == "1"} {
 		# In case of error, abort.
 		set ::rivetstarkit::finished($sock) 1
-		if {$elogfd != ""} {
-			tcl_puts $elogfd "($sock/$addr/[pid]) $::errorInfo"
-			flush $elogfd
-		}
+		::rivetstarkit::puts_log $elogfd "($sock/$addr/[pid]) $::errorInfo"
 	}
 }
 
