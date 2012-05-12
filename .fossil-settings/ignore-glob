@@ -1,2 +1,6 @@
+build/example/test1.cgi
+build/example/test1.cgi/*
+build/example/test1.kit
+build/example/test1.kit/*
 lib/*-*
 lib/*-*/*
