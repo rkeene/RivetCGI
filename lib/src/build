@@ -1,6 +1,6 @@
 #! /bin/bash
 
-source "$(find "${TCLCONFIGPATH}" /usr/lib /usr/local/lib -name 'tclConfig.sh' 2>/dev/null | head -1)"
+source "$(find "${TCLCONFIGPATH}" /usr/lib{64,} /usr/local/lib{64,} -name 'tclConfig.sh' 2>/dev/null | head -1)"
 
 OUTFILE="librivetparser${TCL_SHLIB_SUFFIX}"
 
