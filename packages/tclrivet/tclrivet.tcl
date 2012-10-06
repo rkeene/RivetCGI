@@ -204,15 +204,9 @@ proc rivet_error {} {
 		set incoming_errorInfo "<<NO ERROR>>"
 	}
 
-	set uidprefix ""
-	catch {
-		package require Tclx
-		set uidprefix "[id userid]-"
-	}
-
 	set caseid {ERROR}
 	catch {
-		set caseid $uidprefix[clock seconds]-[pid][expr abs([clock clicks])]
+		set caseid [clock seconds]-[pid][expr abs([clock clicks])]
 	}
 
 	if {![info exists ::env(SERVER_ADMIN)]} {
