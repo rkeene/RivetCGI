@@ -13,9 +13,18 @@ This package is maintained by Mr. Roy Keene, not Mr. David Welton.
 II. USAGE
 
 1. Rivet as CGI with Apache 2.x
-	a. Compile "rivet.cgi" (found in the "bin/" directory)
-	b. Copy "rivet.cgi" (from above) to a directory that allows ExecCGI
-	c. Setup Apache to allow "*.rvt" files to be parsed by this executabl
+	a. Completely remove mod_rivet
+	b. Compile "rivet.cgi" (found in the "bin/" directory)
+		i. $ cd bin
+		ii. $ make rivet.cgi
+		iii. $ cd ..
+	c. Make the directory "/usr/lib/rivet0.5.0"
+		i. # mkdir -p /usr/lib/rivet0.5.0
+	d. Make the directory "/usr/lib/rivet0.5.0/cgi-bin"
+		i. # mkdir -p /usr/lib/rivet0.5.0/cgi-bin
+	e. Copy "rivet.cgi" (from above) to a directory that allows ExecCGI (/usr/lib/rivet0.5.0/cgi-bin/)
+		i. # cp bin/rivet.cgi /usr/lib/rivet0.5.0/cgi-bin/
+	f. Setup Apache to allow "*.rvt" files to be parsed by this executable
 		i. Apache 2.x Configuration:
 			AddHandler rivet-cgi .rvt
 			Action rivet-cgi /RIVET-CGI-HASH-IGNORE-d9a9ef3f27db4d8163deee1421e06f00/rivet.cgi
@@ -32,7 +41,13 @@ II. USAGE
 			        AcceptPathInfo On
 			    </Files>
 			</IfModule>
-	d. Copy "packages/*" to somewhere in the Tcl library search path 
+	g. Make the "librivetparser.so"
+		i. $ cd lib/src
+		ii. $ make
+	h. Copy the directories "lib", "packages", "rivet-tcl" to /usr/lib/rivet0.5.0
+		i. # cp -rp lib packages rivet-tcl /usr/lib/rivet0.5.0/
+	i. Remove /usr/lib/rivet0.5.0/lib/src
+		i. # rm -rf /usr/lib/rivet0.5.0/lib/src
 
 2. Rivet as CGI by converting directory tree into a Starkit.
 	a. For more information on Starkits, see this page:

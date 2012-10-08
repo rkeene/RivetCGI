@@ -1,4 +1,4 @@
-LDFLAGS = -ltcl
+LDFLAGS = -ltcl8.5
 CFLAGS = -Wall -W
 BINS = rivet.cgi
 
