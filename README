@@ -22,7 +22,7 @@ II. USAGE
 		i. # mkdir -p /usr/lib/rivet0.5.0
 	d. Make the directory "/usr/lib/rivet0.5.0/cgi-bin"
 		i. # mkdir -p /usr/lib/rivet0.5.0/cgi-bin
-	e. Copy "rivet.cgi" (from above) to a directory that allows ExecCGI (/usr/lib/rivet0.5.0/cgi-bin/)
+	e. Copy "rivet.cgi" (from above) to "/usr/lib/rivet0.5.0/cgi-bin/"
 		i. # cp bin/rivet.cgi /usr/lib/rivet0.5.0/cgi-bin/
 	f. Setup Apache to allow "*.rvt" files to be parsed by this executable
 		i. Apache 2.x Configuration:
@@ -41,9 +41,10 @@ II. USAGE
 			        AcceptPathInfo On
 			    </Files>
 			</IfModule>
-	g. Make the "librivetparser.so"
+	g. Build optimized Rivet parser ("librivetparser.so")
 		i. $ cd lib/src
 		ii. $ make
+		iii. $ cd ../..
 	h. Copy the directories "lib", "packages", "rivet-tcl" to /usr/lib/rivet0.5.0
 		i. # cp -rp lib packages rivet-tcl /usr/lib/rivet0.5.0/
 	i. Remove /usr/lib/rivet0.5.0/lib/src
