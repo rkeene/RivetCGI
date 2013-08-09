@@ -1311,7 +1311,7 @@ proc rivet_cgi_server_request_data {sock addr hostport logfd elogfd pmodel} {
 					unset -nocomplain myenv(SSL_CLIENT_VERIFY)
 				}
 
-				foreach {myenvvar tlsvar} [list SSL_CLIENT_S_DN subject SSL_CLIENT_I_DN issuer SSL_CLIENT_V_START notBefore SSL_CLIENT_V_END notAfter SSL_CLIENT_M_SERIAL serial SSL_CIPHER cipher SSL_CIPHER_USEKEYSIZE sbits] {
+				foreach {myenvvar tlsvar} [list SSL_CLIENT_S_DN subject SSL_CLIENT_I_DN issuer SSL_CLIENT_V_START notBefore SSL_CLIENT_V_END notAfter SSL_CLIENT_M_SERIAL serial SSL_CIPHER cipher SSL_CIPHER_USEKEYSIZE sbits SSL_CLIENT_CERT certificate] {
 					if {![info exists tlsinfo_peer($tlsvar)]} {
 						continue
 					}
