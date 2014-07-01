@@ -36,7 +36,7 @@ proc call_page {{useenv ""} {createinterp 0}} {
 	} else {
 		set targetfile [file join $::starkit::topdir]
 	}
-	
+
 	# If the file specified is a directory, look for an index
 	if {[file isdirectory $targetfile]} {
 		foreach chk_indexfile $indexfiles {
@@ -84,17 +84,51 @@ proc call_page {{useenv ""} {createinterp 0}} {
 			# Return a 403 (Forbidden)
 			::rivet::cgi_server_writehttpheader 403 [array get env]
 			tcl_puts $outchan "<html><head><title>Forbidden</title></head><body><h1>File Access Forbidden</h1></body>"
+			return
+
 		} elseif {[file tail $targetfile] == "__RIVETSTARKIT_INDEX__"} {
 			# Return a 403 (Forbidden)
 			::rivet::cgi_server_writehttpheader 403 [array get env]
 			tcl_puts $outchan "<html><head><title>Directory Listing Forbidden</title></head><body><h1>Directory Listing Forbidden</h1></body>"
-		} else {
+
+			return
+		}
+
+		set newtargetfile ""
+		foreach component [file split $targetfile] {
+			set tmp_newtargetfile [file join $newtargetfile $component]
+
+			if {![file exists $tmp_newtargetfile]} {
+				if {[file exists "${tmp_newtargetfile}.rvt"]} {
+					append tmp_newtargetfile ".rvt"
+
+					set newtargetfile $tmp_newtargetfile
+				}
+				break
+			}
+
+			set newtargetfile $tmp_newtargetfile
+		}
+		set targetfile $newtargetfile
+		unset newtargetfile
+
+		set targetfile [file normalize $targetfile]
+		set srcdir $::starkit::topdir
+		if {![string match "$srcdir/*" $targetfile]} {
+			set targetfile ""
+		}
+
+		if {[file isdirectory $targetfile]} {
+			set targetfile ""
+		}
+
+		if {$targetfile == ""} {
 			# Return a 404 (File Not Found)
 			::rivet::cgi_server_writehttpheader 404 [array get env]
 			tcl_puts $outchan "<html><head><title>File Not Found</title></head><body><h1>File Not Found</h1></body>"
-		}
 
-		return
+			return
+		}
 	}
 	
 	# Determine what to do with the file based on its filename
