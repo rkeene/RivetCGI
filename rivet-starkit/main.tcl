@@ -1066,6 +1066,7 @@ proc rivet_cgi_server_request {hostport logfd elogfd pmodel maxthreads httpmode 
 				::rivetstarkit::puts_log $elogfd "Creating thread: $threadId"
 
 				# Load the needed packages in the new thread
+				thread::send $threadId [list set ::auto_path $::auto_path]
 				thread::send $threadId [list package require tclrivet]
 				thread::send $threadId [list set ::rivet::parsestack [info script]]
 
