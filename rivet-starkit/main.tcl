@@ -7,7 +7,7 @@ package require tclrivet
 
 namespace eval ::rivetstarkit { }
 
-proc call_page {{useenv ""} {createinterp 0}} {
+proc call_page {{useenv ""}} {
 	if {$useenv eq ""} {
 		upvar ::env env
 	} else {
@@ -18,9 +18,10 @@ proc call_page {{useenv ""} {createinterp 0}} {
 	set outchan stdout
 	set elogchan ""
 	if {[info exists env(RIVET_INTERFACE)]} {
-		set inchan [lindex $env(RIVET_INTERFACE) 1]
-		set outchan [lindex $env(RIVET_INTERFACE) 2]
-		set elogchan [lindex $env(RIVET_INTERFACE) 3]
+		array set rivet_interface $env(RIVET_INTERFACE)
+		set inchan $rivet_interface(inchan)
+		set outchan $rivet_interface(outchan)
+		set elogchan $rivet_interface(elogchan)
 	}
 
 	# Determine if a sub-file has been requested
@@ -147,69 +148,26 @@ proc call_page {{useenv ""} {createinterp 0}} {
 				set env(SCRIPT_NAME) $scriptname
 			}
 
-			if {$createinterp} {
-				set myinterp [interp create]
+			if {$useenv ne ""} {
+				unset -nocomplain ::env
+				array set ::env [array get env] 
+			}
 
-				foreach var [list ::starkit::topdir ::auto_path] {
-					if {[namespace qualifiers $var] != ""} {
-						$myinterp eval [list namespace eval [namespace qualifiers $var] ""]
-					}
-					$myinterp eval [list set $var [set $var]]
-				}
-
-				$myinterp eval [list package require tclrivet]
-				$myinterp eval [list unset -nocomplain ::env]
-				$myinterp eval [list array set ::env [array get env]]
-				$myinterp eval [list set ::rivet::parsestack [info script]]
-
-				if {$inchan != "stdin"} {
-					interp share {} $inchan $myinterp
-				}
-				if {$outchan != "stdout"} {
-					interp share {} $outchan $myinterp
-				}
-				if {$elogchan != "" && $elogchan != "stderr"} {
-					interp share {} $elogchan $myinterp
-				}
-
-				if {[catch {
-					$myinterp eval [list parse $targetfile]
-				} err]} {
-					$myinterp eval [list rivet_error]
-				}
-
-				# Flush the output stream
-				$myinterp eval [list rivet_flush -final]
-
-				# Determine result
-				set retval "close"
-				if {[$myinterp eval [list info exists ::rivet::connection]]} {
-					set retval [$myinterp eval [list set ::rivet::connection]]
-				}
-
-				interp delete $myinterp
-			} else {
-				if {$useenv ne ""} {
-					unset -nocomplain ::env
-					array set ::env [array get env] 
-				}
-
-				::rivet::reset
+			::rivet::reset
  
-				if {[catch {
-					parse $targetfile
-				} err]} {
-					rivet_error
-				}
+			if {[catch {
+				parse $targetfile
+			} err]} {
+				rivet_error
+			}
 
-				# Flush the output stream
-				rivet_flush -final
+			# Flush the output stream
+			rivet_flush -final
 
-				# Determine result
-				set retval "close"
-				if {[info exists ::rivet::connection]} {
-					set retval $::rivet::connection
-				}
+			# Determine result
+			set retval "close"
+			if {[info exists ::rivet::connection]} {
+				set retval $::rivet::connection
 			}
 	
 			return $retval
@@ -1029,7 +987,11 @@ proc rivet_cgi_server_request {hostport logfd elogfd pmodel maxthreads httpmode 
 				}
 			}
 		}
-		"thread" {
+		"thread" - "flat" {
+			if {$pmodel == "flat"} {
+				...
+			}
+
 			# Find a free thread...
 			if {![info exists ::rivetstarkit::threadinfo]} {
 				array set ::rivetstarkit::threadinfo {}
@@ -1134,8 +1096,6 @@ proc rivet_cgi_server_request {hostport logfd elogfd pmodel maxthreads httpmode 
 
 			set parentThreadId $threadId
 			unset threadId
-		}
-		"flat" {
 		}
 	}
 
@@ -1319,7 +1279,7 @@ proc rivet_cgi_server_request_data {sock addr hostport logfd elogfd pmodel} {
 
 			# Add Rivet Interface specification to fake environment, so further
 			# Rivet/CGI knows how to interface
-			set myenv(RIVET_INTERFACE) [list FULLHEADERS $sock $sock $elogfd [array get headers]]
+			set myenv(RIVET_INTERFACE) [list mode FULLHEADERS inchan $sock outchan $sock elogchan $elogfd headers [array get headers]]
 
 			# Set TLS Socket Info
 			array set tlsinfo_peer [list sbits 0]
@@ -1406,15 +1366,11 @@ proc rivet_cgi_server_request_data {sock addr hostport logfd elogfd pmodel} {
 			# Call "call_page" with the new enivronment
 			set result "close"
 			if {[catch {
-				if {$pmodel == "flat"} {
-					set result [call_page [array get myenv] 1]
-				} else {
-					set result [call_page [array get myenv] 0]
-				}
+				set result [call_page [array get myenv]]
 
 				::rivetstarkit::puts_log $logfd "$addr - - \[[clock format [clock seconds] -format {%d/%b/%Y:%H:%M:%S %z}]\] \"$sockinfo(requestline)\" 200 0 \"-\" \"$ua\""
 			} err]} {
-				::rivetstarkit::puts_log $logfd "$addr - - \[[clock format [clock seconds] -format {%d/%b/%Y:%H:%M:%S %z}]\] \"$sockinfo(requestline)\" 500 0 \"-\" \"$ua\" \"Error: [join [split $err {"\n}]]\""
+				::rivetstarkit::puts_log $logfd "$addr - - \[[clock format [clock seconds] -format {%d/%b/%Y:%H:%M:%S %z}]\] \"$sockinfo(requestline)\" 500 0 \"-\" \"$ua\" \"Error: [join [split $err "\"\n"]]\""
 
 				::rivetstarkit::puts_log $elogfd "($sock/$addr/[pid]) $err"
 				::rivetstarkit::puts_log $elogfd "($sock/$addr/[pid]) $::errorInfo"
@@ -1442,79 +1398,78 @@ proc rivet_cgi_server_request_data {sock addr hostport logfd elogfd pmodel} {
 	}
 }
 
-
 # Determine if we are being called as a CGI, or from the command line
-if {![info exists ::env(GATEWAY_INTERFACE)]} {
-	set cmd [lindex $argv 0]
-	set argv [lrange $argv 1 end]
-
-	switch -- $cmd {
-		"--server" {
-			set conffile [file dirname [info script]]
-			append conffile ".conf"
-			if {[file exists $conffile]} {
-				set argv_conf [list]
-				catch {
-					set fd [open $conffile]
-
-					set argv_conf [read -nonewline $fd]
-
-					close $fd
-				}
-
-				set argv [concat $argv_conf $argv]
-			}
-
-			set options(--address) "ALL"
-			set options(--port) 80
-			set options(--foreground) no
-			set options(--init) ""
-			set options(--logfile) ""
-			set options(--errorlog) ""
-			set options(--maxthreads) 16
-			set options(--sslport) 0
-			set options(--sslcert) ""
-			set options(--sslkey) ""
-			set options(--sslcafile) ""
-			set options(--sslcadir) ""
-			set options(--sslreqcert) 0
-			array set options $argv
-
-			set rivet_cgi_server_addr $options(--address)
-			set rivet_cgi_server_port $options(--port)
-			if {$options(--sslport) != "0"} {
-				append rivet_cgi_server_port " ssl:[join $options(--sslport) { ssl:}]"
-			}
-			set rivet_cgi_server_fg [expr !!($options(--foreground))]
-			set rivet_cgi_server_init $options(--init)
-			set rivet_cgi_server_logfile $options(--logfile)
-			set rivet_cgi_server_errorlogfile $options(--errorlog)
-			set rivet_cgi_server_maxthreads $options(--maxthreads)
-			set rivet_cgi_server_sslopts [list certfile $options(--sslcert) keyfile $options(--sslkey) cafile $options(--sslcafile) cadir $options(--sslcadir) request $options(--sslreqcert)]
-
-			rivet_cgi_server $rivet_cgi_server_addr $rivet_cgi_server_port $rivet_cgi_server_fg $rivet_cgi_server_init $rivet_cgi_server_logfile $rivet_cgi_server_errorlogfile $rivet_cgi_server_maxthreads $rivet_cgi_server_sslopts
-
-			# If rivet_cgi_server returns, something went wrong...
-			exit 1
-		}
-		"--cgi" {
-			call_page
-			exit 0
-		}
-		"--help" {
-			print_help
-			exit 0
-		}
-		"--version" {
-			tcl_puts "RivetStarkit version @@VERS@@"
-			exit 0
-		}
-		default {
-			print_help
-			exit 1
-		}
-	}
-} else {
+if {[info exists ::env(GATEWAY_INTERFACE)]} {
 	call_page
+	exit 0
 }
 
+set cmd [lindex $argv 0]
+set argv [lrange $argv 1 end]
+
+switch -- $cmd {
+	"--server" {
+		set conffile [file dirname [info script]]
+		append conffile ".conf"
+		if {[file exists $conffile]} {
+			set argv_conf [list]
+			catch {
+				set fd [open $conffile]
+
+				set argv_conf [read -nonewline $fd]
+
+				close $fd
+			}
+
+			set argv [concat $argv_conf $argv]
+		}
+
+		set options(--address) "ALL"
+		set options(--port) 80
+		set options(--foreground) no
+		set options(--init) ""
+		set options(--logfile) ""
+		set options(--errorlog) ""
+		set options(--maxthreads) 16
+		set options(--sslport) 0
+		set options(--sslcert) ""
+		set options(--sslkey) ""
+		set options(--sslcafile) ""
+		set options(--sslcadir) ""
+		set options(--sslreqcert) 0
+		array set options $argv
+
+		set rivet_cgi_server_addr $options(--address)
+		set rivet_cgi_server_port $options(--port)
+		if {$options(--sslport) != "0"} {
+			append rivet_cgi_server_port " ssl:[join $options(--sslport) { ssl:}]"
+		}
+		set rivet_cgi_server_fg [expr !!($options(--foreground))]
+		set rivet_cgi_server_init $options(--init)
+		set rivet_cgi_server_logfile $options(--logfile)
+		set rivet_cgi_server_errorlogfile $options(--errorlog)
+		set rivet_cgi_server_maxthreads $options(--maxthreads)
+		set rivet_cgi_server_sslopts [list certfile $options(--sslcert) keyfile $options(--sslkey) cafile $options(--sslcafile) cadir $options(--sslcadir) request $options(--sslreqcert)]
+
+		rivet_cgi_server $rivet_cgi_server_addr $rivet_cgi_server_port $rivet_cgi_server_fg $rivet_cgi_server_init $rivet_cgi_server_logfile $rivet_cgi_server_errorlogfile $rivet_cgi_server_maxthreads $rivet_cgi_server_sslopts
+
+		# If rivet_cgi_server returns, something went wrong...
+		exit 1
+	}
+	"--cgi" {
+		call_page
+		exit 0
+	}
+	"--help" {
+		print_help
+		exit 0
+	}
+	"--version" {
+		tcl_puts "RivetStarkit version @@VERS@@"
+		exit 0
+	}
+	default {
+		print_help
+		exit 1
+	}
+}
