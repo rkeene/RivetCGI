@@ -215,11 +215,15 @@ proc rivet_error {} {
 		set ::env(SERVER_ADMIN) ""
 	}
 
-	tcl_puts $errchan "BEGIN_CASENUMBER=$caseid"
-	tcl_puts $errchan "GLOBALS: [info globals]"
-	tcl_puts $errchan "***********************"
-	tcl_puts $errchan "$incoming_errorInfo"
-	tcl_puts $errchan "END_CASENUMBER=$caseid"
+	if {$errchan != ""} {
+		catch {
+			tcl_puts $errchan "BEGIN_CASENUMBER=$caseid"
+			tcl_puts $errchan "GLOBALS: [info globals]"
+			tcl_puts $errchan "***********************"
+			tcl_puts $errchan "$incoming_errorInfo"
+			tcl_puts $errchan "END_CASENUMBER=$caseid"
+		}
+	}
 
 	append errmsg {<!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML 2.0//EN">} "\n"
 	append errmsg {<html><head>} "\n"
