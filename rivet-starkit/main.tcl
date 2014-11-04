@@ -150,6 +150,8 @@ proc call_page {{useenv ""} {createinterp 0}} {
 			if {$createinterp} {
 				set myinterp [interp create]
 
+				interp alias $myinterp exit {} ::rivetstarkit::destroy_interp $myinterp
+
 				foreach var [list ::starkit::topdir ::auto_path] {
 					if {[namespace qualifiers $var] != ""} {
 						$myinterp eval [list namespace eval [namespace qualifiers $var] ""]
@@ -768,6 +770,10 @@ proc ::rivetstarkit::puts_log {logfd msg} {
 
 		flush $logfd
 	}
+}
+
+proc ::rivetstarkit::destroy_interp {interp args} {
+	interp delete $interp
 }
 
 proc print_help {} {
