@@ -1,0 +1,10 @@
+<?
+	headers redirect "/"
+?><html>
+  <head>
+    <title>Rivet/CGI Example Test 1</title>
+  </head>
+  <body>
+    This is a simple Rivet test.<br>
+  </body>
+</html>

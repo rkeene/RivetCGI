@@ -1,4 +1,4 @@
-TESTS = test1.cgi
+TESTS = test1.cgi test2.cgi
 
 all: $(TESTS)
 
@@ -10,6 +10,8 @@ all: $(TESTS)
 
 test1.cgi: test1.kit
 test1.kit: test1.vfs
+test2.cgi: test2.kit
+test2.kit: test2.vfs
 
 clean:
 	rm -f $(TESTS) *.kit

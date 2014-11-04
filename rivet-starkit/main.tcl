@@ -177,10 +177,16 @@ proc call_page {{useenv ""} {createinterp 0}} {
 				if {[catch {
 					$myinterp eval [list parse $targetfile]
 				} err]} {
-					$myinterp eval [list rivet_error]
+					if {[info command $myinterp] != ""} {
+						$myinterp eval [list rivet_error]
+					}
 				}
 
 				# Flush the output stream
+				if {[info command $myinterp] == ""} {
+					return
+				}
+
 				$myinterp eval [list rivet_flush -final]
 
 				# Determine result
@@ -773,8 +779,10 @@ proc ::rivetstarkit::puts_log {logfd msg} {
 }
 
 proc ::rivetstarkit::destroy_interp {interp args} {
+	catch {
+		$interp eval [list rivet_flush -final]
+	}
 	interp delete $interp
-	proc $interp args {}
 }
 
 proc print_help {} {
