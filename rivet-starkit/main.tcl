@@ -774,6 +774,7 @@ proc ::rivetstarkit::puts_log {logfd msg} {
 
 proc ::rivetstarkit::destroy_interp {interp args} {
 	interp delete $interp
+	proc $interp args {}
 }
 
 proc print_help {} {
