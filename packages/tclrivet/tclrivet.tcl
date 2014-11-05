@@ -773,6 +773,10 @@ proc ::rivet::cgi_server_writehttpheader {statuscode {useenv ""} {length -1}} {
 		if {[lindex $env(RIVET_INTERFACE) 0] == "FULLHEADERS"} {
 			fconfigure $outchan -translation crlf
 
+			if {[info exists ::rivet::header_redirect]} {
+				set statuscode 302
+			}
+
 			tcl_puts $outchan "HTTP/1.1 $statuscode [::rivet::statuscode_to_str $statuscode]"
 			tcl_puts $outchan "Date: [clock format [clock seconds] -format {%a, %d %b %Y %H:%M:%S GMT} -gmt 1]"
 			tcl_puts $outchan "Server: Default"
