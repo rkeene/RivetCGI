@@ -779,9 +779,6 @@ proc ::rivetstarkit::puts_log {logfd msg} {
 }
 
 proc ::rivetstarkit::destroy_interp {interp args} {
-	catch {
-		$interp eval [list rivet_flush -final]
-	}
 	interp delete $interp
 }
 

@@ -827,9 +827,6 @@ proc ::rivet::cgi_server_writehttpheader {statuscode {useenv ""} {length -1}} {
 			tcl_puts $outchan "$var: $val"
 		}
 	} else {
-		foreach {var val} [array get ::rivet::header_pairs] {
-			tcl_puts $outchan "$var: $val"
-		}
 		tcl_puts $outchan "Location: $::rivet::header_redirect"
 		tcl_puts $outchan ""
 		abort_page
