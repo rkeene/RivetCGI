@@ -107,7 +107,7 @@ Rivet_GetRivetFile(char *filename, int toplevel,
     }
 
     if (toplevel) {
-        Tcl_AppendToObj(outbuf, "namespace eval request {\n", -1);
+        Tcl_AppendToObj(outbuf, "namespace eval request {}; proc ::request::__HANDLE_REQUEST__ {} {\n", -1);
     } else {
         Tcl_SetStringObj(outbuf, "", -1);
     }
@@ -133,7 +133,7 @@ Rivet_GetRivetFile(char *filename, int toplevel,
 
     if (toplevel)
     {
-        Tcl_AppendToObj(outbuf, "\n}", -1);
+        Tcl_AppendToObj(outbuf, "\n}; namespace eval request ::request::__HANDLE_REQUEST__; rename ::request::__HANDLE_REQUEST__ {};", -1);
     }
     Tcl_AppendToObj(outbuf, "\n", -1);
 

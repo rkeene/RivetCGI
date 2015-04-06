@@ -164,13 +164,13 @@ proc rivet::parse { data outbufvar } {
 
 proc rivet::parserivetdata { data } {
     variable outputcmd
-    set outbuf "namespace eval request {\n"
+    set outbuf "namespace eval request {}; proc ::request::__HANDLE_REQUEST__ {} {\n"
     append outbuf "$outputcmd \""
     if { [parse $data outbuf] == 0 } {
 	append outbuf "\"\n"
     }
 
-    append outbuf "\n}"
+    append outbuf "\n}; namespace eval request ::request::__HANDLE_REQUEST__; rename ::request::__HANDLE_REQUEST__ {};"
     return $outbuf
 }
 
