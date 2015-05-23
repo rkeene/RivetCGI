@@ -17,10 +17,11 @@ proc call_page {{useenv ""} {createinterp 0}} {
 	set inchan stdout
 	set outchan stdout
 	set elogchan ""
-	if {[info exists env(RIVET_INTERFACE)]} {
-		set inchan [lindex $env(RIVET_INTERFACE) 1]
-		set outchan [lindex $env(RIVET_INTERFACE) 2]
-		set elogchan [lindex $env(RIVET_INTERFACE) 3]
+
+	if {[info exists ::rivetstarkit::RIVET_INTERFACE]} {
+		set inchan [lindex $::rivetstarkit::RIVET_INTERFACE 1]
+		set outchan [lindex $::rivetstarkit::RIVET_INTERFACE 2]
+		set elogchan [lindex $::rivetstarkit::RIVET_INTERFACE 3]
 	}
 
 	# Determine if a sub-file has been requested
@@ -152,7 +153,7 @@ proc call_page {{useenv ""} {createinterp 0}} {
 
 				interp alias $myinterp exit {} ::rivetstarkit::destroy_interp $myinterp
 
-				foreach var [list ::starkit::topdir ::auto_path] {
+				foreach var [list ::starkit::topdir ::auto_path ::rivetstarkit::RIVET_INTERFACE] {
 					if {[namespace qualifiers $var] != ""} {
 						$myinterp eval [list namespace eval [namespace qualifiers $var] ""]
 					}
@@ -170,7 +171,7 @@ proc call_page {{useenv ""} {createinterp 0}} {
 				if {$outchan != "stdout"} {
 					interp share {} $outchan $myinterp
 				}
-				if {$elogchan != "" && $elogchan != "stderr"} {
+				if {$elogchan != "stderr"} {
 					interp share {} $elogchan $myinterp
 				}
 
@@ -766,15 +767,76 @@ proc call_page {{useenv ""} {createinterp 0}} {
 	return "unknown"
 }
 
+proc ::rivetstarkit::logFdToRealFd {logfd} {
+
+	set type [lindex $logfd 0]
+	set filename [lindex $logfd 1]
+
+	if {$filename == ""} {
+		return ""
+	}
+
+	if {[info exists ::rivetstarkit::logfdcache($filename)]} {
+		set fd $::rivetstarkit::logfdcache($filename)
+	} else {
+		switch -- $filename {
+			"-" {
+				switch -- $type {
+					"LOG" {
+						set destination stdout
+					}
+					"ERROR" {
+						set destination stderr
+					}
+				}
+
+			}
+			"stdout" - "stderr" {
+				set destination $filename
+			}
+			default {
+				set filename [file join [file dirname [file dirname [info script]]] $filename]
+
+				catch {
+					set fd [open $filename a]
+				}
+				if {![info exists fd]} {
+					catch {
+						set fd [open $filename w]
+					}
+				}
+			}
+		}
+
+		if {[info exists destination] && ![info exists fd]} {
+			if {$::rivetstarkit::process_model == "thread"} {
+				set fd [open "/dev/$destination" w]
+			} else {
+				set fd $destination
+			}
+		}
+
+		if {![info exists fd]} {
+			return ""
+		}
+
+		set ::rivetstarkit::logfdcache($filename) $fd
+	}
+
+	return $fd
+}
+
 proc ::rivetstarkit::puts_log {logfd msg} {
-	if {$logfd == ""} {
+	set fd [::rivetstarkit::logFdToRealFd $logfd]
+
+	if {$fd == ""} {
 		return
 	}
 
 	catch {
-		tcl_puts $logfd $msg
+		tcl_puts $fd $msg
 
-		flush $logfd
+		flush $fd
 	}
 }
 
@@ -884,40 +946,15 @@ proc rivet_cgi_server {addr ports foreground initscp logfile errorlogfile maxthr
 		uplevel #0 $initscp
 	}
 
-	switch -- $logfile {
-		"-" {
-			set logfd stdout
-		}
-		"" {
-			set logfd ""
-		}
-		default {
-			set logfile [file join [file dirname [file dirname [info script]]] $logfile]
-			set logfd [open $logfile a]
-		}
-	}
-
-	switch -- $errorlogfile {
-		"-" {
-			set elogfd stderr
-		}
-		"" {
-			set elogfd stderr
-			catch {
-				set elogfd [open /dev/null a]
-			}
-		}
-		default {
-			set errorlogfile [file join [file dirname [file dirname [info script]]] $errorlogfile]
-			set elogfd [open $errorlogfile a]
-		}
-	}
+	set ::rivetstarkit::process_model $process_model
+	set logfd [list "LOG" $logfile]
+	set elogfd [list "ERROR" $errorlogfile]
 
 	catch {
 		wm withdraw .
 	}
 
-	if {$elogfd == "stderr" || $logfd == "stdout"} {
+	if {$errorlogfile == "-" || $logfile == "-"} {
 		catch {
 			console show
 		}
@@ -1136,7 +1173,7 @@ proc rivet_cgi_server_request {hostport logfd elogfd pmodel maxthreads httpmode 
 			thread::transfer $threadId $sock
 
 			::rivetstarkit::puts_log $elogfd "Calling child thread to handle request ($threadId) in background"
-			thread::send -async $threadId [list rivet_cgi_server_request $hostport "" "" "thread-child" 0 $httpmode $sock $addr $port [thread::id]]
+			thread::send -async $threadId [list rivet_cgi_server_request $hostport $logfd $elogfd "thread-child" 0 $httpmode $sock $addr $port [thread::id]]
 			::rivetstarkit::puts_log $elogfd " ... done ($threadId)."
 
 			return
@@ -1331,7 +1368,8 @@ proc rivet_cgi_server_request_data {sock addr hostport logfd elogfd pmodel} {
 
 			# Add Rivet Interface specification to fake environment, so further
 			# Rivet/CGI knows how to interface
-			set myenv(RIVET_INTERFACE) [list FULLHEADERS $sock $sock $elogfd [array get headers]]
+			namespace eval ::rivetstarkit {}
+			set ::rivetstarkit::RIVET_INTERFACE [list FULLHEADERS $sock $sock [::rivetstarkit::logFdToRealFd $elogfd] [array get headers]]
 
 			# Set TLS Socket Info
 			array set tlsinfo_peer [list sbits 0]

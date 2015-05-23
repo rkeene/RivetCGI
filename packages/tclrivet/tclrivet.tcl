@@ -136,9 +136,9 @@ proc rivet_flush args {
 	}
 
 	set outchan stdout
-	if {[info exists ::env(RIVET_INTERFACE)]} {
-		set outchan [lindex $::env(RIVET_INTERFACE) 2]
-		array set headers [lindex $::env(RIVET_INTERFACE) 4]
+	if {[info exists ::rivetstarkit::RIVET_INTERFACE]} {
+		set outchan [lindex $::rivetstarkit::RIVET_INTERFACE 2]
+		array set headers [lindex $::rivetstarkit::RIVET_INTERFACE 4]
 	}
 
 	if {!$::rivet::header_sent} {
@@ -192,9 +192,9 @@ proc rivet_flush args {
 proc rivet_error {} {
 	set outchan stdout
 	set errchan stderr
-	if {[info exists ::env(RIVET_INTERFACE)]} {
-		set outchan [lindex $::env(RIVET_INTERFACE) 2]
-		set errchan [lindex $::env(RIVET_INTERFACE) 3]
+	if {[info exists ::rivetstarkit::RIVET_INTERFACE]} {
+		set outchan [lindex $::rivetstarkit::RIVET_INTERFACE 2]
+		set errchan [lindex $::rivetstarkit::RIVET_INTERFACE 3]
 	}
 
 	global errorInfo
@@ -242,8 +242,8 @@ proc rivet_error {} {
 
 proc rivet_puts args {
 	set outchan stdout
-	if {[info exists ::env(RIVET_INTERFACE)]} {
-		set outchan [lindex $::env(RIVET_INTERFACE) 2]
+	if {[info exists ::rivetstarkit::RIVET_INTERFACE]} {
+		set outchan [lindex $::rivetstarkit::RIVET_INTERFACE 2]
 	}
 
 	if {[lindex $args 0] == "-nonewline"} {
@@ -317,8 +317,8 @@ proc var args {
 
 proc ::rivet::_var args {
 	set inchan stdin
-	if {[info exists ::env(RIVET_INTERFACE)]} {
-		set inchan [lindex $::env(RIVET_INTERFACE) 1]
+	if {[info exists ::rivetstarkit::RIVET_INTERFACE]} {
+		set inchan [lindex $::rivetstarkit::RIVET_INTERFACE 1]
 	}
 
 	if {![info exists ::rivet::cache_vars]} {
@@ -766,11 +766,11 @@ proc ::rivet::cgi_server_writehttpheader {statuscode {useenv ""} {length -1}} {
 
 	set outchan stdout
 
-	if {[info exists env(RIVET_INTERFACE)]} {
-		set outchan [lindex $env(RIVET_INTERFACE) 2]
-		array set headers [lindex $env(RIVET_INTERFACE) 4]
+	if {[info exists ::rivetstarkit::RIVET_INTERFACE]} {
+		set outchan [lindex $::rivetstarkit::RIVET_INTERFACE 2]
+		array set headers [lindex $::rivetstarkit::RIVET_INTERFACE 4]
 
-		if {[lindex $env(RIVET_INTERFACE) 0] == "FULLHEADERS"} {
+		if {[lindex $::rivetstarkit::RIVET_INTERFACE 0] == "FULLHEADERS"} {
 			fconfigure $outchan -translation crlf
 
 			if {[info exists ::rivet::header_redirect]} {
