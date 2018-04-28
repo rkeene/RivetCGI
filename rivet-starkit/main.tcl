@@ -7,6 +7,8 @@ package require tclrivet
 
 namespace eval ::rivetstarkit { }
 
+set ::baseEnvironment [array get ::env]
+
 proc call_page {{useenv ""} {createinterp 0}} {
 	if {$useenv eq ""} {
 		upvar ::env env
@@ -1321,6 +1323,7 @@ proc rivet_cgi_server_request_data {sock addr hostport logfd elogfd pmodel} {
 
 			# Create CGI/1.1 compatible environment
 			## Standard variables
+			array set myenv $::baseEnvironment
 			set myenv(GATEWAY_INTERFACE) "CGI/1.1"
 			set myenv(SERVER_SOFTWARE) "Rivet Starkit"
 			set myenv(SERVER_NAME) [lindex [split $headers(HOST) :] 0]
