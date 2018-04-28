@@ -1048,10 +1048,10 @@ proc rivet_cgi_server_request {hostport logfd elogfd pmodel maxthreads httpmode 
 		"fork" {
 			# Flush log descriptor, so buffer doesn't contain any extra data.
 			if {$logfd != ""} {
-				flush $logfd
+				flush [::rivetstarkit::logFdToRealFd $logfd]
 			}
 			if {$elogfd != ""} {
-				flush $elogfd
+				flush [::rivetstarkit::logFdToRealFd $elogfd]
 			}
 
 			# Reap up to 10 children per request
