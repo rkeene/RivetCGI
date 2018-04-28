@@ -1127,7 +1127,7 @@ proc rivet_cgi_server_request {hostport logfd elogfd pmodel maxthreads httpmode 
 				}
 
 				# Copy the appropriate variables to the new thread
-				foreach var [list ::starkit::topdir ::rivet_cgi_tls_verified($sock)] {
+				foreach var [list ::starkit::topdir ::rivet_cgi_tls_verified($sock) ::rivetstarkit::process_model] {
 					if {[namespace qualifiers $var] != ""} {
 						thread::send $threadId [list namespace eval [namespace qualifiers $var] ""]
 					}
@@ -1140,7 +1140,7 @@ proc rivet_cgi_server_request {hostport logfd elogfd pmodel maxthreads httpmode 
 				}
 
 				# Copy the appropriate procedures to the new thread
-				foreach proc [list rivet_cgi_server_request_data rivet_cgi_server_request call_page ::rivetstarkit::puts_log] {
+				foreach proc [list rivet_cgi_server_request_data rivet_cgi_server_request call_page ::rivetstarkit::puts_log ::rivetstarkit::logFdToRealFd] {
 					if {[namespace qualifiers $var] != ""} {
 						thread::send $threadId [list namespace eval [namespace qualifiers $var] ""]
 					}
